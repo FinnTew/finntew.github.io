@@ -1,5 +1,5 @@
 ---
-title: Golang 底层原理 - Slice 的底层原理 / 简单实现
+title: Golang 笔记 - Slice 的底层原理 / 简单实现
 description: Golang Slice 的学习笔记，包括 切片的底层结构、和数组的区别、扩容机制、以及简单的代码实现等
 slug: golang-my-slice
 date: 2024-10-07T19:16:47+08:00
@@ -7,7 +7,7 @@ math: true
 image: 
 tags: 
   - Golang
-  - Golang底层原理
+  - Golang 笔记
 weight: 1
 ---
 
