@@ -55,13 +55,13 @@ func NewArray(elem *Type, bound int64) *Type {
 }
 ```
 
-且对于 **是否在堆栈中初始化** 也是在编译期就确定了，由数组的存储元素的类型决定。
+且对于 **是否在堆栈中初始化** 也是在编译期就确定了，由数组存储元素的类型决定。
 
 ## 数组初始化
 
 ### 创建
 
-在 Golang 中，数组有 `[Len]Type{elems...}` 和 `[...]Type{elems...}` 两种创建方式。前者显示的指定长度，后者在编译期推倒其长度。
+在 Golang 中，数组有 `[Len]Type{elems...}` 和 `[...]Type{elems...}` 两种创建方式。前者显式的指定长度，后者在编译期推导其长度。
 
 两种方式构造的数组在运行时是完全相同的。
 
@@ -86,7 +86,7 @@ func tcCompLit(n *ir.CompLitExpr) (res ir.Node) {
 }
 ```
 
-最终都会通过 `typecheckarraylit` 函数计算实际长度/检查是否越界。`[...]Type` 只是一种提供遍历的语法糖。
+最终都会通过 `typecheckarraylit` 函数计算实际长度/检查是否越界。`[...]Type` 只是一种提供便利的语法糖。
 
 ### 优化
 
