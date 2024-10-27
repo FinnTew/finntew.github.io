@@ -2,7 +2,7 @@
 title: "Golang 笔记 - GC(垃圾回收机制)"
 description: "GC(垃圾回收机制)学习笔记"
 slug: go-note-gc
-date: 2024-10-26T19:56:56+08:00
+date: 2024-10-27T12:56:56+08:00
 math: true
 image:
 tags:
