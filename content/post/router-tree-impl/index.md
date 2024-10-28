@@ -1,13 +1,13 @@
 ---
-title: 一些想法的简单实现 - 路由树的简单实现
-description: 一些思考：路由树的简单实现，以及一些优化
+title: Demos - 路由树的简单实现
+description: 路由树的简单实现，以及一些优化
 slug: router-tree-impl
 date: 2024-10-17T20:24:06+08:00
 math: true
 image:
 tags:
   - Golang
-  - 一些想法的简单实现
+  - Demos
 weight: 1
 ---
 
