@@ -1,5 +1,5 @@
 ---
-title: Demos - BloomFilter 实现
+title: DataStructure - BloomFilter 实现
 description: BloomFilter 基本实现的笔记记录
 slug: bloomfliter-impl
 date: 2024-10-28T13:15:46+08:00
@@ -7,7 +7,7 @@ math: true
 image:
 tags:
 - Golang
-- Demos
+- DataStructure
 weight: 1
 ---
 
