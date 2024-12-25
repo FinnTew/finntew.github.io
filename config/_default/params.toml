@@ -5,7 +5,7 @@ rssFullContent = true
 favicon = "/favicon.png"
 
 [footer]
-since = 2023
+since = 2024
 customText = ""
 
 [dateFormat]
@@ -13,7 +13,7 @@ published = "Jan 02, 2006"
 lastUpdated = "Jan 02, 2006 15:04 MST"
 
 [sidebar]
-emoji = "🍥"
+emoji = "💤"
 subtitle = "Energy = Milk x Coffee²"
 
 [sidebar.avatar]
@@ -76,8 +76,8 @@ enabled = true
 
 ## Comments
 [comments]
-enabled = false
-provider = "cusdis"
+enabled = true
+provider = "vssue"
 
 [comments.disqusjs]
 shortname = "finntew"
@@ -97,12 +97,12 @@ site = ""
 locale = ""
 
 [comments.vssue]
-platform = ""
-owner = ""
-repo = ""
-clientId = ""
-clientSecret = ""
-autoCreateIssue = false
+platform = "github"
+owner = "FinnTew"
+repo = "blog-comments"
+clientId = "Ov23liKS3gJoM4gkl7fL"
+clientSecret = "1f652d3a84fa45475ff7ffe25e89dc72cf9434af"
+autoCreateIssue = true
 
 [comments.waline]
 serverURL = ""
