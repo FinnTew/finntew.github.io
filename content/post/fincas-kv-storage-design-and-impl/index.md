@@ -1,7 +1,7 @@
 ---
 title: FincasKV - 存储层设计与实现
 description: FincasKV 存储层相关的一些记录
-slug: fincas-kv-storage-design-and-implement
+slug: fincas-kv-storage-design-and-impl
 date: 2025-02-10T19:58:06+08:00
 math: true
 image:
