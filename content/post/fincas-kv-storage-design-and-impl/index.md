@@ -1,6 +1,6 @@
 ---
 title: FincasKV - 存储层设计与实现
-description: FincasKV 存储层相关的一些记录
+description: FincasKV 存储层相关的一些记录，包括 Bitcask 及其从内存索引，内存缓存，写入等方面的优化。
 slug: fincas-kv-storage-design-and-impl
 date: 2025-02-10T19:58:06+08:00
 math: true
@@ -88,7 +88,7 @@ const (
 2. 通过 Entry 中的 FileID 确定目标 DataFile。
 3. 假设整个文件为 data[:]，那么我们只需要读出 data[Entry.Offset:Entry.Offset + Entry.Size] 即为需要的 Record。
 4. 不难算出 HeaderSize = timestamp(8) + flags(4) + keyLen(4) + valueLen(4) = 20 bytes，而 CRC 校验和为 8 bytes，所以 Record 实际大小为 28 bytes + len(Key) + len(Value)。
-5. 我实现时 DataFile 中每条 Record 按照 "Header | Key | Value | CRC" 这样存储，所以我们读出 data[Entry.Offset + HeaderSize:Entry.Offset + Entry.Size - 8] 即为 "Key | Value"。 
+5. DataFile 中每条 Record 按照 "Header | Key | Value | CRC" 这样存储，所以我们读出 data[Entry.Offset + HeaderSize:Entry.Offset + Entry.Size - 8] 即为 "Key | Value"。 
 
 ### Merge
 

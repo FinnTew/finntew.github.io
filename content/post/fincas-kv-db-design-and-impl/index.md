@@ -1,6 +1,6 @@
 ---
 title: FincasKV - DB层设计与实现
-description: FincasKV DB层相关的一些记录
+description: FincasKV DB层相关的一些记录，包括 TTL，Batch，Redis DataStructure 等。
 slug: fincas-kv-db-design-and-impl
 date: 2025-02-14T18:00:02+08:00
 math: true
@@ -37,7 +37,7 @@ weight: 1
 
 这里使用惰性删除的方式，避免定时扫描全量数据造成的性能问题。不过缺点也比较明显，如果设置了 TTL 的 key 一直没有被访问，那么该 key 就会一直存在于内存中，造成内存浪费。
 
-在之后了解到一个 redis 中一个优秀的实现：结合定时扫描和惰性删除的方式，使用了一种混合的方式：
+在之后了解到 redis 中一个优秀的实现：结合定时扫描和惰性删除的方式，使用了一种混合的方式：
 
 - 定时扫描每次只抽出一部分 key 进行检查。避免全量扫描时间过长。
 - 对于没有扫描到的 key 进行惰性删除。
