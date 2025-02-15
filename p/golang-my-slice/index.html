@@ -1,0 +1,631 @@
+<!doctype html><html lang=en dir=ltr><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><meta name=description content="Golang Slice 的学习笔记，包括 切片的底层结构、和数组的区别、扩容机制、以及简单的代码实现等"><title>Golang 笔记 - Slice 的底层原理 / 简单实现</title>
+<link rel=canonical href=https://finntew.github.io/p/golang-my-slice/><link rel=stylesheet href=/scss/style.min.663803bebe609202d5b39d848f2d7c2dc8b598a2d879efa079fa88893d29c49c.css><meta property='og:title' content="Golang 笔记 - Slice 的底层原理 / 简单实现"><meta property='og:description' content="Golang Slice 的学习笔记，包括 切片的底层结构、和数组的区别、扩容机制、以及简单的代码实现等"><meta property='og:url' content='https://finntew.github.io/p/golang-my-slice/'><meta property='og:site_name' content="FinnTew's Blog"><meta property='og:type' content='article'><meta property='article:section' content='Post'><meta property='article:tag' content='Golang'><meta property='article:tag' content='Golang 笔记'><meta property='article:published_time' content='2024-10-07T19:16:47+08:00'><meta property='article:modified_time' content='2024-10-07T19:16:47+08:00'><meta name=twitter:title content="Golang 笔记 - Slice 的底层原理 / 简单实现"><meta name=twitter:description content="Golang Slice 的学习笔记，包括 切片的底层结构、和数组的区别、扩容机制、以及简单的代码实现等"><link rel="shortcut icon" href=/favicon.png></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.getItem(e)||localStorage.setItem(e,"auto")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/><img src=/img/avatar_hu_d919a87470c417cb.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+</a><span class=emoji>💤</span></figure><div class=site-meta><h1 class=site-name><a href=/>FinnTew's Blog</a></h1><h2 class=site-description>Energy = Milk x Coffee²</h2></div></header><ol class=menu id=main-menu><li><a href=/><svg class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>Home</span></a></li><li><a href=/archives/><svg class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>Archives</span></a></li><li><a href=/search/><svg class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>Search</span></a></li><li class=menu-bottom-section><ol class=menu><li id=dark-mode-toggle><svg class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="8" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<svg class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="16" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<span>暗色模式</span></li></ol></li></ol></aside><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#一些介绍->一些介绍 ～</a><ol><li><a href=#底层结构>底层结构</a></li><li><a href=#切片和数组的区别>切片和数组的区别</a></li><li><a href=#扩容机制>扩容机制</a><ol><li><a href=#118-版本之前>1.18 版本之前</a></li><li><a href=#118-版本及之后版本>1.18 版本及之后版本</a></li></ol></li></ol></li><li><a href=#手写实现->手写实现 ～</a><ol><li><a href=#结构定义--构造->结构定义 & 构造 &mldr;</a></li><li><a href=#追加元素>追加元素</a></li><li><a href=#扩容>扩容</a></li><li><a href=#取值--修改>取值 & 修改</a></li><li><a href=#截取--删除>截取 & 删除</a></li><li><a href=#完整代码>完整代码</a></li></ol></li></ol></nav></div></section></aside><main class="main full-width"><article class=main-article><header class=article-header><div class=article-details><div class=article-title-wrapper><h2 class=article-title><a href=/p/golang-my-slice/>Golang 笔记 - Slice 的底层原理 / 简单实现</a></h2><h3 class=article-subtitle>Golang Slice 的学习笔记，包括 切片的底层结构、和数组的区别、扩容机制、以及简单的代码实现等</h3></div><footer class=article-time><div><svg class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>Oct 07, 2024</time></div></footer></div></header><section class=article-content><h2 id=一些介绍->一些介绍 ～</h2><h3 id=底层结构>底层结构</h3><p>切片的底层结构如下：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span> <span class=nx>slice</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>array</span> <span class=nx>unsafe</span><span class=p>.</span><span class=nx>Pointer</span> <span class=c1>// 指向底层数组的指针</span>
+</span></span><span class=line><span class=cl>	<span class=nx>len</span>   <span class=kt>int</span>            <span class=c1>// 长度/当前元素个数</span>
+</span></span><span class=line><span class=cl>	<span class=nx>cap</span>   <span class=kt>int</span>            <span class=c1>// 容量/最大元素个数</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>可以看到 <em>slice</em> 本质上是从<strong>数组</strong>抽象出来的一个复合类型</p><h3 id=切片和数组的区别>切片和数组的区别</h3><p>这种设计使得切片相对数组更加灵活高效：</p><ul><li>长度、容量可以动态变化，可以追加元素，动态扩容</li><li>切片是一个引用类型，在传递时采用浅拷贝，只复制<em>len</em>和<em>cap</em>，而使用同一个底层数组</li><li>操作过程中更新<em>len</em>和<em>cap</em>，做到 $O(1)$ 的计算长度，而不像数组需要遍历计算长度</li></ul><h3 id=扩容机制>扩容机制</h3><p>我们刚在提到切片可以追加元素，动态扩容</p><p>所谓的扩容大致做法就是：当前长度加上追加元素的数量大于当前容量的时候，重新开一个新的满足长度要求的数组指针，将原数组元素依次拷贝到新数组后，再追加新的元素</p><p>值的一提的是对于确定扩容后容量的做法，在1.18版本以前和1.18版本及以后版本的实现稍有不同：</p><h4 id=118-版本之前>1.18 版本之前</h4><ul><li>期望的新容量大于当前容量的<strong>2倍</strong>：直接扩充为新容量</li><li>否则：<ul><li>原容量小于<strong>1024</strong>：扩充为原来的<strong>2倍</strong></li><li>原容量大于<strong>1024</strong>：循环若干次，每次扩充为原来的<strong>1.25倍</strong>，直到新容量大于等于期望容量为止</li></ul></li></ul><p><strong>代码：</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=nx>newCap</span> <span class=o>:=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span>
+</span></span><span class=line><span class=cl><span class=nx>doubleCap</span> <span class=o>:=</span> <span class=nx>newCap</span> <span class=o>+</span> <span class=nx>newCap</span>
+</span></span><span class=line><span class=cl><span class=k>if</span> <span class=nx>expCap</span> <span class=p>&gt;</span> <span class=nx>doubleCap</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>newCap</span> <span class=p>=</span> <span class=nx>expCap</span>
+</span></span><span class=line><span class=cl><span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span> <span class=p>&lt;</span> <span class=mi>1024</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>newCap</span> <span class=p>=</span> <span class=nx>doubleCap</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>for</span> <span class=mi>0</span> <span class=p>&lt;</span> <span class=nx>newCap</span> <span class=o>&amp;&amp;</span> <span class=nx>newCap</span> <span class=p>&lt;</span> <span class=nx>expCap</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=nx>newCap</span> <span class=o>+=</span> <span class=nx>newCap</span> <span class=o>/</span> <span class=mi>4</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>newCap</span> <span class=o>&lt;=</span> <span class=mi>0</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=nx>newCap</span> <span class=p>=</span> <span class=nx>expCap</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>由于这种扩容方式容量扩大不太平滑，循环扩容时会出现后一次的计算值比前一次的计算值小的情况，而且扩容后容量和长度差距过大</p><p>所以在1.18版本之后，修改为了另一种更平滑的扩容方式，容量和长度也更加接近</p><h4 id=118-版本及之后版本>1.18 版本及之后版本</h4><ul><li>期望的新容量大于当前容量的<strong>2倍</strong>：直接扩充为新容量</li><li>否则：<ul><li>原容量小于<strong>256</strong>：扩充为原来的<strong>2倍</strong></li><li>原容量大于<strong>256</strong>：循环若干次，每次扩充增加 <strong>(旧容量+3*256)/4</strong>，直到新容量大于等于期望容量为止</li></ul></li></ul><p><strong>代码：</strong></p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=nx>newCap</span> <span class=o>:=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span>
+</span></span><span class=line><span class=cl><span class=nx>doubleCap</span> <span class=o>:=</span> <span class=nx>newCap</span> <span class=o>+</span> <span class=nx>newCap</span>
+</span></span><span class=line><span class=cl><span class=k>if</span> <span class=nx>expCap</span> <span class=p>&gt;</span> <span class=nx>doubleCap</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nx>newCap</span> <span class=p>=</span> <span class=nx>expCap</span>
+</span></span><span class=line><span class=cl><span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span> <span class=p>&lt;</span> <span class=mi>256</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=nx>newCap</span> <span class=p>=</span> <span class=nx>doubleCap</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=k>for</span> <span class=mi>0</span> <span class=p>&lt;</span> <span class=nx>newCap</span> <span class=o>&amp;&amp;</span> <span class=nx>newCap</span> <span class=p>&lt;</span> <span class=nx>expCap</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>            <span class=nx>newCap</span> <span class=o>+=</span> <span class=p>(</span><span class=nx>newCap</span> <span class=o>+</span> <span class=mi>3</span><span class=o>*</span><span class=mi>256</span><span class=p>)</span> <span class=o>/</span> <span class=mi>4</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>        <span class=k>if</span> <span class=nx>newCap</span> <span class=o>&lt;=</span> <span class=mi>0</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>            <span class=nx>newCap</span> <span class=p>=</span> <span class=nx>expCap</span>
+</span></span><span class=line><span class=cl>        <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=手写实现->手写实现 ～</h2><h3 id=结构定义--构造->结构定义 & 构造 &mldr;</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span> <span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span> <span class=kt>any</span><span class=p>]</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>array</span>    <span class=nx>unsafe</span><span class=p>.</span><span class=nx>Pointer</span> <span class=c1>// 底层数组</span>
+</span></span><span class=line><span class=cl>	<span class=nx>length</span>   <span class=kt>int</span>            <span class=c1>// 长度</span>
+</span></span><span class=line><span class=cl>	<span class=nx>capacity</span> <span class=kt>int</span>            <span class=c1>// 容量</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=nx>NewSlice</span><span class=p>[</span><span class=nx>T</span> <span class=kt>any</span><span class=p>](</span><span class=nx>capacity</span> <span class=kt>int</span><span class=p>)</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>]</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nx>arrPtr</span> <span class=o>:=</span> <span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=o>&amp;</span><span class=nb>make</span><span class=p>([]</span><span class=nx>T</span><span class=p>,</span> <span class=nx>capacity</span><span class=p>)[</span><span class=mi>0</span><span class=p>])</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=o>&amp;</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>]{</span>
+</span></span><span class=line><span class=cl>        <span class=nx>array</span><span class=p>:</span>    <span class=nx>arrPtr</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>length</span><span class=p>:</span>   <span class=mi>0</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>        <span class=nx>capacity</span><span class=p>:</span> <span class=nx>capacity</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>Len</span><span class=p>()</span> <span class=kt>int</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=nx>s</span><span class=p>.</span><span class=nx>length</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>Cap</span><span class=p>()</span> <span class=kt>int</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>Array</span><span class=p>()</span> <span class=p>[]</span><span class=nx>T</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=p>(</span><span class=o>*</span><span class=p>(</span><span class=o>*</span><span class=p>[]</span><span class=nx>T</span><span class=p>)(</span><span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>s</span><span class=p>.</span><span class=nx>array</span><span class=p>)))[:</span><span class=nx>s</span><span class=p>.</span><span class=nx>length</span><span class=p>]</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=追加元素>追加元素</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>Append</span><span class=p>(</span><span class=nx>elems</span> <span class=o>...</span><span class=nx>T</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>s</span><span class=p>.</span><span class=nx>length</span> <span class=o>&gt;=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>s</span><span class=p>.</span><span class=nf>grow</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>length</span> <span class=o>+</span> <span class=mi>1</span><span class=p>)</span> <span class=c1>// 扩容</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nb>len</span><span class=p>(</span><span class=nx>elems</span><span class=p>);</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span> <span class=c1>// 追加元素</span>
+</span></span><span class=line><span class=cl>		<span class=nx>elemPtr</span> <span class=o>:=</span> <span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=nb>uintptr</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>array</span><span class=p>)</span> <span class=o>+</span> <span class=nb>uintptr</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>length</span><span class=p>)</span><span class=o>*</span><span class=nx>unsafe</span><span class=p>.</span><span class=nf>Sizeof</span><span class=p>(</span><span class=o>*</span><span class=nb>new</span><span class=p>(</span><span class=nx>T</span><span class=p>)))</span>
+</span></span><span class=line><span class=cl>		<span class=o>*</span><span class=p>(</span><span class=o>*</span><span class=nx>T</span><span class=p>)(</span><span class=nx>elemPtr</span><span class=p>)</span> <span class=p>=</span> <span class=nx>elems</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span>
+</span></span><span class=line><span class=cl>		<span class=nx>s</span><span class=p>.</span><span class=nx>length</span> <span class=o>+=</span> <span class=mi>1</span> <span class=c1>// 更新长度</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=扩容>扩容</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>grow</span><span class=p>(</span><span class=nx>expCap</span> <span class=kt>int</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>newCap</span> <span class=o>:=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span>
+</span></span><span class=line><span class=cl>	<span class=nx>doubleCap</span> <span class=o>:=</span> <span class=nx>newCap</span> <span class=o>+</span> <span class=nx>newCap</span>
+</span></span><span class=line><span class=cl>	<span class=c1>// 1.18 以前</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//if expCap &gt; doubleCap {</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//	newCap = expCap</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//} else {</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//	if s.capacity &lt; 1024 {</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//		newCap = doubleCap</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//	} else {</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//		for 0 &lt; newCap &amp;&amp; newCap &lt; expCap {</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//			newCap += newCap / 4</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//		}</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//		if newCap &lt;= 0 {</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//			newCap = expCap</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//		}</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//	}</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=c1>// 1.18 及以后</span>
+</span></span><span class=line><span class=cl>	<span class=c1>// 计算新容量</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>expCap</span> <span class=p>&gt;</span> <span class=nx>doubleCap</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>newCap</span> <span class=p>=</span> <span class=nx>expCap</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span> <span class=p>&lt;</span> <span class=mi>256</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=nx>newCap</span> <span class=p>=</span> <span class=nx>doubleCap</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=k>for</span> <span class=mi>0</span> <span class=p>&lt;</span> <span class=nx>newCap</span> <span class=o>&amp;&amp;</span> <span class=nx>newCap</span> <span class=p>&lt;</span> <span class=nx>expCap</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>				<span class=nx>newCap</span> <span class=o>+=</span> <span class=p>(</span><span class=nx>newCap</span> <span class=o>+</span> <span class=mi>3</span><span class=o>*</span><span class=mi>256</span><span class=p>)</span> <span class=o>/</span> <span class=mi>4</span>
+</span></span><span class=line><span class=cl>			<span class=p>}</span>
+</span></span><span class=line><span class=cl>			<span class=k>if</span> <span class=nx>newCap</span> <span class=o>&lt;=</span> <span class=mi>0</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>				<span class=nx>newCap</span> <span class=p>=</span> <span class=nx>expCap</span>
+</span></span><span class=line><span class=cl>			<span class=p>}</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=c1>// 创新新的底层数组</span>
+</span></span><span class=line><span class=cl>	<span class=nx>newArrPtr</span> <span class=o>:=</span> <span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=o>&amp;</span><span class=nb>make</span><span class=p>([]</span><span class=nx>T</span><span class=p>,</span> <span class=nx>newCap</span><span class=p>)[</span><span class=mi>0</span><span class=p>])</span>
+</span></span><span class=line><span class=cl>	<span class=c1>// 拷贝元素</span>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nx>s</span><span class=p>.</span><span class=nx>length</span><span class=p>;</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>oldElemPtr</span> <span class=o>:=</span> <span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=nb>uintptr</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>array</span><span class=p>)</span> <span class=o>+</span> <span class=nb>uintptr</span><span class=p>(</span><span class=nx>i</span><span class=p>)</span><span class=o>*</span><span class=nx>unsafe</span><span class=p>.</span><span class=nf>Sizeof</span><span class=p>(</span><span class=o>*</span><span class=nb>new</span><span class=p>(</span><span class=nx>T</span><span class=p>)))</span>
+</span></span><span class=line><span class=cl>		<span class=nx>newElemPtr</span> <span class=o>:=</span> <span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=nb>uintptr</span><span class=p>(</span><span class=nx>newArrPtr</span><span class=p>)</span> <span class=o>+</span> <span class=nb>uintptr</span><span class=p>(</span><span class=nx>i</span><span class=p>)</span><span class=o>*</span><span class=nx>unsafe</span><span class=p>.</span><span class=nf>Sizeof</span><span class=p>(</span><span class=o>*</span><span class=nb>new</span><span class=p>(</span><span class=nx>T</span><span class=p>)))</span>
+</span></span><span class=line><span class=cl>		<span class=o>*</span><span class=p>(</span><span class=o>*</span><span class=nx>T</span><span class=p>)(</span><span class=nx>newElemPtr</span><span class=p>)</span> <span class=p>=</span> <span class=o>*</span><span class=p>(</span><span class=o>*</span><span class=nx>T</span><span class=p>)(</span><span class=nx>oldElemPtr</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=c1>// 更新指针</span>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>array</span> <span class=p>=</span> <span class=nx>newArrPtr</span>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span> <span class=p>=</span> <span class=nx>newCap</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=取值--修改>取值 & 修改</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>Get</span><span class=p>(</span><span class=nx>idx</span> <span class=kt>int</span><span class=p>)</span> <span class=nx>T</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>idx</span> <span class=p>&lt;</span> <span class=mi>0</span> <span class=o>||</span> <span class=nx>idx</span> <span class=o>&gt;=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>length</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nb>panic</span><span class=p>(</span><span class=s>&#34;index out of range&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=nx>elemPtr</span> <span class=o>:=</span> <span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=nb>uintptr</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>array</span><span class=p>)</span> <span class=o>+</span> <span class=nb>uintptr</span><span class=p>(</span><span class=nx>idx</span><span class=p>)</span><span class=o>*</span><span class=nx>unsafe</span><span class=p>.</span><span class=nf>Sizeof</span><span class=p>(</span><span class=o>*</span><span class=nb>new</span><span class=p>(</span><span class=nx>T</span><span class=p>)))</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=o>*</span><span class=p>(</span><span class=o>*</span><span class=nx>T</span><span class=p>)(</span><span class=nx>elemPtr</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>Set</span><span class=p>(</span><span class=nx>idx</span> <span class=kt>int</span><span class=p>,</span> <span class=nx>elem</span> <span class=nx>T</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>idx</span> <span class=p>&lt;</span> <span class=mi>0</span> <span class=o>||</span> <span class=nx>idx</span> <span class=o>&gt;=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>length</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nb>panic</span><span class=p>(</span><span class=s>&#34;index out of range&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=nx>elemPtr</span> <span class=o>:=</span> <span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=nb>uintptr</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>array</span><span class=p>)</span> <span class=o>+</span> <span class=nb>uintptr</span><span class=p>(</span><span class=nx>idx</span><span class=p>)</span><span class=o>*</span><span class=nx>unsafe</span><span class=p>.</span><span class=nf>Sizeof</span><span class=p>(</span><span class=o>*</span><span class=nb>new</span><span class=p>(</span><span class=nx>T</span><span class=p>)))</span>
+</span></span><span class=line><span class=cl>	<span class=o>*</span><span class=p>(</span><span class=o>*</span><span class=nx>T</span><span class=p>)(</span><span class=nx>elemPtr</span><span class=p>)</span> <span class=p>=</span> <span class=nx>elem</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=截取--删除>截取 & 删除</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>Slice</span><span class=p>(</span><span class=nx>leftBound</span><span class=p>,</span> <span class=nx>rightBound</span> <span class=kt>int</span><span class=p>)</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>]</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// 检查区间合法性</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=nx>leftBound</span> <span class=p>&lt;</span> <span class=mi>0</span> <span class=o>||</span> <span class=nx>rightBound</span> <span class=p>&gt;</span> <span class=nx>s</span><span class=p>.</span><span class=nx>length</span> <span class=o>||</span> <span class=nx>leftBound</span> <span class=p>&gt;</span> <span class=nx>rightBound</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=nb>panic</span><span class=p>(</span><span class=s>&#34;invalid slice bounds&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// 创建新的切片</span>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=o>&amp;</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>]{</span>
+</span></span><span class=line><span class=cl>        <span class=c1>// 这里只需要将向左边界偏移后的指针设为新切片的起始指针即可</span>
+</span></span><span class=line><span class=cl>        <span class=nx>array</span><span class=p>:</span>    <span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=nb>uintptr</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>array</span><span class=p>)</span> <span class=o>+</span> <span class=nb>uintptr</span><span class=p>(</span><span class=nx>leftBound</span><span class=p>)</span><span class=o>*</span><span class=nx>unsafe</span><span class=p>.</span><span class=nf>Sizeof</span><span class=p>(</span><span class=o>*</span><span class=nb>new</span><span class=p>(</span><span class=nx>T</span><span class=p>))),</span>
+</span></span><span class=line><span class=cl>        <span class=nx>length</span><span class=p>:</span>   <span class=nx>rightBound</span> <span class=o>-</span> <span class=nx>leftBound</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>        <span class=nx>capacity</span><span class=p>:</span> <span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span> <span class=o>-</span> <span class=nx>leftBound</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>Del</span><span class=p>(</span><span class=nx>idx</span> <span class=kt>int</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=nx>idx</span> <span class=p>&lt;</span> <span class=mi>0</span> <span class=o>||</span> <span class=nx>idx</span> <span class=o>&gt;=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>length</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=nb>panic</span><span class=p>(</span><span class=s>&#34;index out of range&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// 删除操作：拼接 [0, idx) 和 (idx, s.length-1]两个切片即可</span>
+</span></span><span class=line><span class=cl>    <span class=nx>newArrPtr</span> <span class=o>:=</span> <span class=nx>s</span><span class=p>.</span><span class=nf>Slice</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=nx>idx</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=nx>newArrPtr</span><span class=p>.</span><span class=nf>Append</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nf>Slice</span><span class=p>(</span><span class=nx>idx</span><span class=o>+</span><span class=mi>1</span><span class=p>,</span> <span class=nx>s</span><span class=p>.</span><span class=nx>length</span><span class=p>).</span><span class=nf>Array</span><span class=p>()</span><span class=o>...</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=nx>s</span><span class=p>.</span><span class=nx>array</span> <span class=p>=</span> <span class=nx>newArrPtr</span><span class=p>.</span><span class=nx>array</span>
+</span></span><span class=line><span class=cl>    <span class=nx>s</span><span class=p>.</span><span class=nx>length</span> <span class=o>-=</span> <span class=mi>1</span>
+</span></span><span class=line><span class=cl>    <span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span> <span class=p>=</span> <span class=nx>newArrPtr</span><span class=p>.</span><span class=nx>capacity</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=完整代码>完整代码</h3><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>  1
+</span><span class=lnt>  2
+</span><span class=lnt>  3
+</span><span class=lnt>  4
+</span><span class=lnt>  5
+</span><span class=lnt>  6
+</span><span class=lnt>  7
+</span><span class=lnt>  8
+</span><span class=lnt>  9
+</span><span class=lnt> 10
+</span><span class=lnt> 11
+</span><span class=lnt> 12
+</span><span class=lnt> 13
+</span><span class=lnt> 14
+</span><span class=lnt> 15
+</span><span class=lnt> 16
+</span><span class=lnt> 17
+</span><span class=lnt> 18
+</span><span class=lnt> 19
+</span><span class=lnt> 20
+</span><span class=lnt> 21
+</span><span class=lnt> 22
+</span><span class=lnt> 23
+</span><span class=lnt> 24
+</span><span class=lnt> 25
+</span><span class=lnt> 26
+</span><span class=lnt> 27
+</span><span class=lnt> 28
+</span><span class=lnt> 29
+</span><span class=lnt> 30
+</span><span class=lnt> 31
+</span><span class=lnt> 32
+</span><span class=lnt> 33
+</span><span class=lnt> 34
+</span><span class=lnt> 35
+</span><span class=lnt> 36
+</span><span class=lnt> 37
+</span><span class=lnt> 38
+</span><span class=lnt> 39
+</span><span class=lnt> 40
+</span><span class=lnt> 41
+</span><span class=lnt> 42
+</span><span class=lnt> 43
+</span><span class=lnt> 44
+</span><span class=lnt> 45
+</span><span class=lnt> 46
+</span><span class=lnt> 47
+</span><span class=lnt> 48
+</span><span class=lnt> 49
+</span><span class=lnt> 50
+</span><span class=lnt> 51
+</span><span class=lnt> 52
+</span><span class=lnt> 53
+</span><span class=lnt> 54
+</span><span class=lnt> 55
+</span><span class=lnt> 56
+</span><span class=lnt> 57
+</span><span class=lnt> 58
+</span><span class=lnt> 59
+</span><span class=lnt> 60
+</span><span class=lnt> 61
+</span><span class=lnt> 62
+</span><span class=lnt> 63
+</span><span class=lnt> 64
+</span><span class=lnt> 65
+</span><span class=lnt> 66
+</span><span class=lnt> 67
+</span><span class=lnt> 68
+</span><span class=lnt> 69
+</span><span class=lnt> 70
+</span><span class=lnt> 71
+</span><span class=lnt> 72
+</span><span class=lnt> 73
+</span><span class=lnt> 74
+</span><span class=lnt> 75
+</span><span class=lnt> 76
+</span><span class=lnt> 77
+</span><span class=lnt> 78
+</span><span class=lnt> 79
+</span><span class=lnt> 80
+</span><span class=lnt> 81
+</span><span class=lnt> 82
+</span><span class=lnt> 83
+</span><span class=lnt> 84
+</span><span class=lnt> 85
+</span><span class=lnt> 86
+</span><span class=lnt> 87
+</span><span class=lnt> 88
+</span><span class=lnt> 89
+</span><span class=lnt> 90
+</span><span class=lnt> 91
+</span><span class=lnt> 92
+</span><span class=lnt> 93
+</span><span class=lnt> 94
+</span><span class=lnt> 95
+</span><span class=lnt> 96
+</span><span class=lnt> 97
+</span><span class=lnt> 98
+</span><span class=lnt> 99
+</span><span class=lnt>100
+</span><span class=lnt>101
+</span><span class=lnt>102
+</span><span class=lnt>103
+</span><span class=lnt>104
+</span><span class=lnt>105
+</span><span class=lnt>106
+</span><span class=lnt>107
+</span><span class=lnt>108
+</span><span class=lnt>109
+</span><span class=lnt>110
+</span><span class=lnt>111
+</span><span class=lnt>112
+</span><span class=lnt>113
+</span><span class=lnt>114
+</span><span class=lnt>115
+</span><span class=lnt>116
+</span><span class=lnt>117
+</span><span class=lnt>118
+</span><span class=lnt>119
+</span><span class=lnt>120
+</span><span class=lnt>121
+</span><span class=lnt>122
+</span><span class=lnt>123
+</span><span class=lnt>124
+</span><span class=lnt>125
+</span><span class=lnt>126
+</span><span class=lnt>127
+</span><span class=lnt>128
+</span><span class=lnt>129
+</span><span class=lnt>130
+</span><span class=lnt>131
+</span><span class=lnt>132
+</span><span class=lnt>133
+</span><span class=lnt>134
+</span><span class=lnt>135
+</span><span class=lnt>136
+</span><span class=lnt>137
+</span><span class=lnt>138
+</span><span class=lnt>139
+</span><span class=lnt>140
+</span><span class=lnt>141
+</span><span class=lnt>142
+</span><span class=lnt>143
+</span><span class=lnt>144
+</span><span class=lnt>145
+</span><span class=lnt>146
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kn>package</span> <span class=nx>my</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kn>import</span> <span class=s>&#34;unsafe&#34;</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>type</span> <span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span> <span class=kt>any</span><span class=p>]</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>array</span>    <span class=nx>unsafe</span><span class=p>.</span><span class=nx>Pointer</span> <span class=c1>// 底层数组</span>
+</span></span><span class=line><span class=cl>	<span class=nx>length</span>   <span class=kt>int</span>            <span class=c1>// 长度</span>
+</span></span><span class=line><span class=cl>	<span class=nx>capacity</span> <span class=kt>int</span>            <span class=c1>// 容量</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=nx>NewSlice</span><span class=p>[</span><span class=nx>T</span> <span class=kt>any</span><span class=p>](</span><span class=nx>capacity</span> <span class=kt>int</span><span class=p>)</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>]</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>arrPtr</span> <span class=o>:=</span> <span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=o>&amp;</span><span class=nb>make</span><span class=p>([]</span><span class=nx>T</span><span class=p>,</span> <span class=nx>capacity</span><span class=p>)[</span><span class=mi>0</span><span class=p>])</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=o>&amp;</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>]{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>array</span><span class=p>:</span>    <span class=nx>arrPtr</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>length</span><span class=p>:</span>   <span class=mi>0</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>capacity</span><span class=p>:</span> <span class=nx>capacity</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>Len</span><span class=p>()</span> <span class=kt>int</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>s</span><span class=p>.</span><span class=nx>length</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>Cap</span><span class=p>()</span> <span class=kt>int</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>Array</span><span class=p>()</span> <span class=p>[]</span><span class=nx>T</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=p>(</span><span class=o>*</span><span class=p>(</span><span class=o>*</span><span class=p>[]</span><span class=nx>T</span><span class=p>)(</span><span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>s</span><span class=p>.</span><span class=nx>array</span><span class=p>)))[:</span><span class=nx>s</span><span class=p>.</span><span class=nx>length</span><span class=p>]</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>Append</span><span class=p>(</span><span class=nx>elems</span> <span class=o>...</span><span class=nx>T</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>s</span><span class=p>.</span><span class=nx>length</span> <span class=o>&gt;=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>s</span><span class=p>.</span><span class=nf>grow</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>length</span> <span class=o>+</span> <span class=mi>1</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nb>len</span><span class=p>(</span><span class=nx>elems</span><span class=p>);</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>elemPtr</span> <span class=o>:=</span> <span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=nb>uintptr</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>array</span><span class=p>)</span> <span class=o>+</span> <span class=nb>uintptr</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>length</span><span class=p>)</span><span class=o>*</span><span class=nx>unsafe</span><span class=p>.</span><span class=nf>Sizeof</span><span class=p>(</span><span class=o>*</span><span class=nb>new</span><span class=p>(</span><span class=nx>T</span><span class=p>)))</span>
+</span></span><span class=line><span class=cl>		<span class=o>*</span><span class=p>(</span><span class=o>*</span><span class=nx>T</span><span class=p>)(</span><span class=nx>elemPtr</span><span class=p>)</span> <span class=p>=</span> <span class=nx>elems</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span>
+</span></span><span class=line><span class=cl>		<span class=nx>s</span><span class=p>.</span><span class=nx>length</span> <span class=o>+=</span> <span class=mi>1</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>grow</span><span class=p>(</span><span class=nx>expCap</span> <span class=kt>int</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>newCap</span> <span class=o>:=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span>
+</span></span><span class=line><span class=cl>	<span class=nx>doubleCap</span> <span class=o>:=</span> <span class=nx>newCap</span> <span class=o>+</span> <span class=nx>newCap</span>
+</span></span><span class=line><span class=cl>	<span class=c1>// 1.18 以前</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//if expCap &gt; doubleCap {</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//	newCap = expCap</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//} else {</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//	if s.capacity &lt; 1024 {</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//		newCap = doubleCap</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//	} else {</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//		for 0 &lt; newCap &amp;&amp; newCap &lt; expCap {</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//			newCap += newCap / 4</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//		}</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//		if newCap &lt;= 0 {</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//			newCap = expCap</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//		}</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//	}</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=c1>// 1.18 及以后</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>expCap</span> <span class=p>&gt;</span> <span class=nx>doubleCap</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>newCap</span> <span class=p>=</span> <span class=nx>expCap</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span> <span class=p>&lt;</span> <span class=mi>256</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=nx>newCap</span> <span class=p>=</span> <span class=nx>doubleCap</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=k>for</span> <span class=mi>0</span> <span class=p>&lt;</span> <span class=nx>newCap</span> <span class=o>&amp;&amp;</span> <span class=nx>newCap</span> <span class=p>&lt;</span> <span class=nx>expCap</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>				<span class=nx>newCap</span> <span class=o>+=</span> <span class=p>(</span><span class=nx>newCap</span> <span class=o>+</span> <span class=mi>3</span><span class=o>*</span><span class=mi>256</span><span class=p>)</span> <span class=o>/</span> <span class=mi>4</span>
+</span></span><span class=line><span class=cl>			<span class=p>}</span>
+</span></span><span class=line><span class=cl>			<span class=k>if</span> <span class=nx>newCap</span> <span class=o>&lt;=</span> <span class=mi>0</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>				<span class=nx>newCap</span> <span class=p>=</span> <span class=nx>expCap</span>
+</span></span><span class=line><span class=cl>			<span class=p>}</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=nx>newArrPtr</span> <span class=o>:=</span> <span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=o>&amp;</span><span class=nb>make</span><span class=p>([]</span><span class=nx>T</span><span class=p>,</span> <span class=nx>newCap</span><span class=p>)[</span><span class=mi>0</span><span class=p>])</span>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nx>s</span><span class=p>.</span><span class=nx>length</span><span class=p>;</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>oldElemPtr</span> <span class=o>:=</span> <span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=nb>uintptr</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>array</span><span class=p>)</span> <span class=o>+</span> <span class=nb>uintptr</span><span class=p>(</span><span class=nx>i</span><span class=p>)</span><span class=o>*</span><span class=nx>unsafe</span><span class=p>.</span><span class=nf>Sizeof</span><span class=p>(</span><span class=o>*</span><span class=nb>new</span><span class=p>(</span><span class=nx>T</span><span class=p>)))</span>
+</span></span><span class=line><span class=cl>		<span class=nx>newElemPtr</span> <span class=o>:=</span> <span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=nb>uintptr</span><span class=p>(</span><span class=nx>newArrPtr</span><span class=p>)</span> <span class=o>+</span> <span class=nb>uintptr</span><span class=p>(</span><span class=nx>i</span><span class=p>)</span><span class=o>*</span><span class=nx>unsafe</span><span class=p>.</span><span class=nf>Sizeof</span><span class=p>(</span><span class=o>*</span><span class=nb>new</span><span class=p>(</span><span class=nx>T</span><span class=p>)))</span>
+</span></span><span class=line><span class=cl>		<span class=o>*</span><span class=p>(</span><span class=o>*</span><span class=nx>T</span><span class=p>)(</span><span class=nx>newElemPtr</span><span class=p>)</span> <span class=p>=</span> <span class=o>*</span><span class=p>(</span><span class=o>*</span><span class=nx>T</span><span class=p>)(</span><span class=nx>oldElemPtr</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>array</span> <span class=p>=</span> <span class=nx>newArrPtr</span>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span> <span class=p>=</span> <span class=nx>newCap</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>Get</span><span class=p>(</span><span class=nx>idx</span> <span class=kt>int</span><span class=p>)</span> <span class=nx>T</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>idx</span> <span class=p>&lt;</span> <span class=mi>0</span> <span class=o>||</span> <span class=nx>idx</span> <span class=o>&gt;=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>length</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nb>panic</span><span class=p>(</span><span class=s>&#34;index out of range&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=nx>elemPtr</span> <span class=o>:=</span> <span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=nb>uintptr</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>array</span><span class=p>)</span> <span class=o>+</span> <span class=nb>uintptr</span><span class=p>(</span><span class=nx>idx</span><span class=p>)</span><span class=o>*</span><span class=nx>unsafe</span><span class=p>.</span><span class=nf>Sizeof</span><span class=p>(</span><span class=o>*</span><span class=nb>new</span><span class=p>(</span><span class=nx>T</span><span class=p>)))</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=o>*</span><span class=p>(</span><span class=o>*</span><span class=nx>T</span><span class=p>)(</span><span class=nx>elemPtr</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>Set</span><span class=p>(</span><span class=nx>idx</span> <span class=kt>int</span><span class=p>,</span> <span class=nx>elem</span> <span class=nx>T</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>idx</span> <span class=p>&lt;</span> <span class=mi>0</span> <span class=o>||</span> <span class=nx>idx</span> <span class=o>&gt;=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>length</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nb>panic</span><span class=p>(</span><span class=s>&#34;index out of range&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=nx>elemPtr</span> <span class=o>:=</span> <span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=nb>uintptr</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>array</span><span class=p>)</span> <span class=o>+</span> <span class=nb>uintptr</span><span class=p>(</span><span class=nx>idx</span><span class=p>)</span><span class=o>*</span><span class=nx>unsafe</span><span class=p>.</span><span class=nf>Sizeof</span><span class=p>(</span><span class=o>*</span><span class=nb>new</span><span class=p>(</span><span class=nx>T</span><span class=p>)))</span>
+</span></span><span class=line><span class=cl>	<span class=o>*</span><span class=p>(</span><span class=o>*</span><span class=nx>T</span><span class=p>)(</span><span class=nx>elemPtr</span><span class=p>)</span> <span class=p>=</span> <span class=nx>elem</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>Slice</span><span class=p>(</span><span class=nx>leftBound</span><span class=p>,</span> <span class=nx>rightBound</span> <span class=kt>int</span><span class=p>)</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>]</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>leftBound</span> <span class=p>&lt;</span> <span class=mi>0</span> <span class=o>||</span> <span class=nx>rightBound</span> <span class=p>&gt;</span> <span class=nx>s</span><span class=p>.</span><span class=nx>length</span> <span class=o>||</span> <span class=nx>leftBound</span> <span class=p>&gt;</span> <span class=nx>rightBound</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nb>panic</span><span class=p>(</span><span class=s>&#34;invalid slice bounds&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=o>&amp;</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>]{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>array</span><span class=p>:</span>    <span class=nx>unsafe</span><span class=p>.</span><span class=nf>Pointer</span><span class=p>(</span><span class=nb>uintptr</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>array</span><span class=p>)</span> <span class=o>+</span> <span class=nb>uintptr</span><span class=p>(</span><span class=nx>leftBound</span><span class=p>)</span><span class=o>*</span><span class=nx>unsafe</span><span class=p>.</span><span class=nf>Sizeof</span><span class=p>(</span><span class=o>*</span><span class=nb>new</span><span class=p>(</span><span class=nx>T</span><span class=p>))),</span>
+</span></span><span class=line><span class=cl>		<span class=nx>length</span><span class=p>:</span>   <span class=nx>rightBound</span> <span class=o>-</span> <span class=nx>leftBound</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>capacity</span><span class=p>:</span> <span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span> <span class=o>-</span> <span class=nx>leftBound</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Slice</span><span class=p>[</span><span class=nx>T</span><span class=p>])</span> <span class=nf>Del</span><span class=p>(</span><span class=nx>idx</span> <span class=kt>int</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>idx</span> <span class=p>&lt;</span> <span class=mi>0</span> <span class=o>||</span> <span class=nx>idx</span> <span class=o>&gt;=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>length</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nb>panic</span><span class=p>(</span><span class=s>&#34;index out of range&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=nx>newArrPtr</span> <span class=o>:=</span> <span class=nx>s</span><span class=p>.</span><span class=nf>Slice</span><span class=p>(</span><span class=mi>0</span><span class=p>,</span> <span class=nx>idx</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=nx>newArrPtr</span><span class=p>.</span><span class=nf>Append</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nf>Slice</span><span class=p>(</span><span class=nx>idx</span><span class=o>+</span><span class=mi>1</span><span class=p>,</span> <span class=nx>s</span><span class=p>.</span><span class=nx>length</span><span class=p>).</span><span class=nf>Array</span><span class=p>()</span><span class=o>...</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>array</span> <span class=p>=</span> <span class=nx>newArrPtr</span><span class=p>.</span><span class=nx>array</span>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>length</span> <span class=o>-=</span> <span class=mi>1</span>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>capacity</span> <span class=p>=</span> <span class=nx>newArrPtr</span><span class=p>.</span><span class=nx>capacity</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1>// 测试</span>
+</span></span><span class=line><span class=cl><span class=kn>package</span> <span class=nx>main</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kn>import</span> <span class=p>(</span>
+</span></span><span class=line><span class=cl>    <span class=s>&#34;fmt&#34;</span>
+</span></span><span class=line><span class=cl>    <span class=s>&#34;some-go-demos/pkgs/my&#34;</span>
+</span></span><span class=line><span class=cl>    <span class=s>&#34;strconv&#34;</span>
+</span></span><span class=line><span class=cl><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=nf>main</span><span class=p>()</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>mySlice</span> <span class=o>:=</span> <span class=nx>my</span><span class=p>.</span><span class=nx>NewSlice</span><span class=p>[</span><span class=kt>string</span><span class=p>](</span><span class=mi>2</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=mi>10</span><span class=p>;</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>mySlice</span><span class=p>.</span><span class=nf>Append</span><span class=p>(</span><span class=nx>strconv</span><span class=p>.</span><span class=nf>Itoa</span><span class=p>(</span><span class=nx>i</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=nx>fmt</span><span class=p>.</span><span class=nf>Println</span><span class=p>(</span><span class=nx>mySlice</span><span class=p>.</span><span class=nf>Get</span><span class=p>(</span><span class=mi>5</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>	<span class=nx>fmt</span><span class=p>.</span><span class=nf>Println</span><span class=p>(</span><span class=nx>mySlice</span><span class=p>.</span><span class=nf>Slice</span><span class=p>(</span><span class=mi>3</span><span class=p>,</span> <span class=mi>6</span><span class=p>).</span><span class=nf>Array</span><span class=p>())</span>
+</span></span><span class=line><span class=cl>	<span class=nx>mySlice</span><span class=p>.</span><span class=nf>Del</span><span class=p>(</span><span class=mi>5</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=nx>fmt</span><span class=p>.</span><span class=nf>Println</span><span class=p>(</span><span class=nx>mySlice</span><span class=p>.</span><span class=nf>Slice</span><span class=p>(</span><span class=mi>3</span><span class=p>,</span> <span class=mi>6</span><span class=p>).</span><span class=nf>Array</span><span class=p>())</span>
+</span></span><span class=line><span class=cl>	<span class=nx>mySlice</span><span class=p>.</span><span class=nf>Set</span><span class=p>(</span><span class=mi>5</span><span class=p>,</span> <span class=s>&#34;hello&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=nx>fmt</span><span class=p>.</span><span class=nf>Println</span><span class=p>(</span><span class=nx>mySlice</span><span class=p>.</span><span class=nf>Slice</span><span class=p>(</span><span class=mi>3</span><span class=p>,</span> <span class=mi>6</span><span class=p>).</span><span class=nf>Array</span><span class=p>())</span>
+</span></span><span class=line><span class=cl>	<span class=nx>fmt</span><span class=p>.</span><span class=nf>Println</span><span class=p>(</span><span class=s>&#34;Len: &#34;</span><span class=p>,</span> <span class=nx>mySlice</span><span class=p>.</span><span class=nf>Len</span><span class=p>(),</span> <span class=s>&#34; Cap: &#34;</span><span class=p>,</span> <span class=nx>mySlice</span><span class=p>.</span><span class=nf>Cap</span><span class=p>())</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div></section><footer class=article-footer><section class=article-tags><a href=/tags/golang/>Golang</a>
+<a href=/tags/golang-%E7%AC%94%E8%AE%B0/>Golang 笔记</a></section><section class=article-copyright><svg class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css integrity=sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js integrity=sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js integrity=sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05 crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{const e=document.querySelector(".main-article");renderMathInElement(e,{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}],ignoredClasses:["gist"]})})</script></article><aside class=related-content--wrapper><h2 class=section-title>相关文章</h2><div class=related-content><div class="flex article-list--tile"><article><a href=/p/go-note-gc/><div class=article-details><h2 class=article-title>Golang 笔记 - GC(垃圾回收机制)</h2></div></a></article><article><a href=/p/go-note-gmp/><div class=article-details><h2 class=article-title>Golang 笔记 - GMP 模型</h2></div></a></article><article><a href=/p/go-note-array/><div class=article-details><h2 class=article-title>Golang 笔记 - 数组的底层实现</h2></div></a></article></div></div></aside><link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css><div id=vssue></div><script src=https://unpkg.com/vue@2/dist/vue.runtime.min.js></script><script src=https://unpkg.com/vssue/dist/vssue.github.min.js></script><script>new Vue({el:"#vssue",render:e=>e("Vssue",{props:{title:"Golang 笔记 - Slice 的底层原理 / 简单实现",options:{autoCreateIssue:!0,owner:"FinnTew",repo:"blog-comments",clientId:"Ov23liKS3gJoM4gkl7fL",clientSecret:"1f652d3a84fa45475ff7ffe25e89dc72cf9434af"}}})})</script><footer class=site-footer><section class=copyright>&copy;
+2024 -
+2025 FinnTew's Blog</section><section class=powerby>使用 <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> 构建<br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.30.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css crossorigin=anonymous></main></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z+KMkF24hUW8WePSA9HM=" crossorigin=anonymous></script><script type=text/javascript src=/ts/main.1e9a3bafd846ced4c345d084b355fb8c7bae75701c338f8a1f8a82c780137826.js defer></script><script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

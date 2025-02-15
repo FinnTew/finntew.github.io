@@ -1,0 +1,895 @@
+<!doctype html><html lang=en dir=ltr><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><meta name=description content="FincasKV 网络层相关的一些记录，包括 Connection, Server, RESP Protocol, Cmd Handler, Cluster 等。"><title>FincasKV - 网络层设计与实现</title>
+<link rel=canonical href=https://finntew.github.io/p/fincas-kv-network-design-and-impl/><link rel=stylesheet href=/scss/style.min.663803bebe609202d5b39d848f2d7c2dc8b598a2d879efa079fa88893d29c49c.css><meta property='og:title' content="FincasKV - 网络层设计与实现"><meta property='og:description' content="FincasKV 网络层相关的一些记录，包括 Connection, Server, RESP Protocol, Cmd Handler, Cluster 等。"><meta property='og:url' content='https://finntew.github.io/p/fincas-kv-network-design-and-impl/'><meta property='og:site_name' content="FinnTew's Blog"><meta property='og:type' content='article'><meta property='article:section' content='Post'><meta property='article:tag' content='Golang'><meta property='article:tag' content='FincasKV'><meta property='article:tag' content='KV Storage'><meta property='article:tag' content='Network'><meta property='article:published_time' content='2025-02-15T15:27:55+08:00'><meta property='article:modified_time' content='2025-02-15T15:27:55+08:00'><meta name=twitter:title content="FincasKV - 网络层设计与实现"><meta name=twitter:description content="FincasKV 网络层相关的一些记录，包括 Connection, Server, RESP Protocol, Cmd Handler, Cluster 等。"><link rel="shortcut icon" href=/favicon.png></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.getItem(e)||localStorage.setItem(e,"auto")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/><img src=/img/avatar_hu_d919a87470c417cb.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+</a><span class=emoji>💤</span></figure><div class=site-meta><h1 class=site-name><a href=/>FinnTew's Blog</a></h1><h2 class=site-description>Energy = Milk x Coffee²</h2></div></header><ol class=menu id=main-menu><li><a href=/><svg class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>Home</span></a></li><li><a href=/archives/><svg class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>Archives</span></a></li><li><a href=/search/><svg class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>Search</span></a></li><li class=menu-bottom-section><ol class=menu><li id=dark-mode-toggle><svg class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="8" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<svg class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="16" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<span>暗色模式</span></li></ol></li></ol></aside><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#闲言碎语>闲言碎语</a></li><li><a href=#resp-protocol>RESP Protocol</a></li><li><a href=#network>Network</a></li></ol></nav></div></section></aside><main class="main full-width"><article class=main-article><header class=article-header><div class=article-details><div class=article-title-wrapper><h2 class=article-title><a href=/p/fincas-kv-network-design-and-impl/>FincasKV - 网络层设计与实现</a></h2><h3 class=article-subtitle>FincasKV 网络层相关的一些记录，包括 Connection, Server, RESP Protocol, Cmd Handler, Cluster 等。</h3></div><footer class=article-time><div><svg class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>Feb 15, 2025</time></div></footer></div></header><section class=article-content><h2 id=闲言碎语>闲言碎语</h2><p>前置参考：</p><ul><li><a class=link href=./fincas-kv-storage-design-and-impl>FincasKV - 存储层设计与实现</a></li><li><a class=link href=./fincas-kv-db-design-and-impl>FincasKV - DB 层设计与实现</a></li></ul><p>本篇对 FincasKV 的网络层实现做一些要点记录。</p><h2 id=resp-protocol>RESP Protocol</h2><p>FincasKV 中实现了简单的 RESP 协议，用于兼容 Redis 客户端，实现命令交互。</p><p>我定义了五种常用数据类型：<code>STRING(+)</code>, <code>ERROR(-)</code>, <code>INTEGER(:)</code>, <code>BULK($)</code>, <code>ARRAY(*)</code>。每个数据项以 <code>CRLF(\r\n)</code> 终止。</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>const</span> <span class=p>(</span>
+</span></span><span class=line><span class=cl>	<span class=nx>STRING</span>  <span class=kt>byte</span> <span class=p>=</span> <span class=sc>&#39;+&#39;</span>
+</span></span><span class=line><span class=cl>	<span class=nx>ERROR</span>   <span class=kt>byte</span> <span class=p>=</span> <span class=sc>&#39;-&#39;</span>
+</span></span><span class=line><span class=cl>	<span class=nx>INTEGER</span> <span class=kt>byte</span> <span class=p>=</span> <span class=sc>&#39;:&#39;</span>
+</span></span><span class=line><span class=cl>	<span class=nx>BULK</span>    <span class=kt>byte</span> <span class=p>=</span> <span class=sc>&#39;$&#39;</span>
+</span></span><span class=line><span class=cl>	<span class=nx>ARRAY</span>   <span class=kt>byte</span> <span class=p>=</span> <span class=sc>&#39;*&#39;</span>
+</span></span><span class=line><span class=cl><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>var</span> <span class=p>(</span>
+</span></span><span class=line><span class=cl>    <span class=nx>ErrInvalidRESP</span> <span class=p>=</span> <span class=nx>errors</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=s>&#34;invalid RESP&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=nx>CRLF</span>           <span class=p>=</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>{</span><span class=sc>&#39;\r&#39;</span><span class=p>,</span> <span class=sc>&#39;\n&#39;</span><span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>)</span>
+</span></span></code></pre></td></tr></table></div></div><p>对于其他类型直接使用 STRING 类型返回即可。</p><p>首先我们看看解析器部分。在这之前，我们需要先明确 redis-cli 使用RESP协议包装后返回到 server 的命令格式是什么样的。</p><p>看两条例子：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>redis-cli -p <span class=m>8911</span> <span class=nb>set</span> a b
+</span></span><span class=line><span class=cl>redis-cli -p <span class=m>8911</span> get a
+</span></span></code></pre></td></tr></table></div></div><p>set 命令按照 RESP 协议包装后的格式为：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-text data-lang=text><span class=line><span class=cl>*3\r\n$3\r\nset\r\n$1\r\na\r\n$1\r\nb\r\n
+</span></span></code></pre></td></tr></table></div></div><p>get 命令按照 RESP 协议包装后的格式为：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-text data-lang=text><span class=line><span class=cl>*2\r\n$3\r\nget\r\n$1\r\na\r\n
+</span></span></code></pre></td></tr></table></div></div><p>我们发现这里的返回格式都是以 &lsquo;*&rsquo; 开始，参考我们前面的定义，也就是说每条指令在这里都作为一个数组发送给 server。且整体只需要考虑 <code>ARRAY</code> <code>BULK</code> <code>INTEGER</code> 类型即可。</p><p>我们简单梳理一下 get 命令的解析过程:</p><ol><li>读取 &lsquo;*&rsquo;，确定为数组类型，解析 INTEGER 确定数组长度。</li><li>读取 &lsquo;$&rsquo;，确定为 BULK 类型，解析 INTEGER 确定字符串长度。</li><li>读取字符串。</li><li>重复 2-3 步，直到读取完整个数组。</li></ol><p>然后直接看一下 coding 实现，比较简单：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span><span class=lnt>62
+</span><span class=lnt>63
+</span><span class=lnt>64
+</span><span class=lnt>65
+</span><span class=lnt>66
+</span><span class=lnt>67
+</span><span class=lnt>68
+</span><span class=lnt>69
+</span><span class=lnt>70
+</span><span class=lnt>71
+</span><span class=lnt>72
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span> <span class=nx>Parser</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>reader</span> <span class=o>*</span><span class=nx>bufio</span><span class=p>.</span><span class=nx>Reader</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>p</span> <span class=o>*</span><span class=nx>Parser</span><span class=p>)</span> <span class=nf>Parse</span><span class=p>()</span> <span class=p>(</span><span class=o>*</span><span class=nx>Command</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>typ</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>p</span><span class=p>.</span><span class=nx>reader</span><span class=p>.</span><span class=nf>ReadByte</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>switch</span> <span class=nx>typ</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>case</span> <span class=nx>ARRAY</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>p</span><span class=p>.</span><span class=nf>parseArray</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=k>default</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=nx>ErrInvalidRESP</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>p</span> <span class=o>*</span><span class=nx>Parser</span><span class=p>)</span> <span class=nf>parseArray</span><span class=p>()</span> <span class=p>(</span><span class=o>*</span><span class=nx>Command</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>length</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>p</span><span class=p>.</span><span class=nf>parseInteger</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>length</span> <span class=p>&lt;</span> <span class=mi>1</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>command</span> <span class=o>:=</span> <span class=o>&amp;</span><span class=nx>Command</span><span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>Args</span><span class=p>:</span> <span class=nb>make</span><span class=p>([][]</span><span class=kt>byte</span><span class=p>,</span> <span class=nx>length</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nx>length</span><span class=p>;</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>typ</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>p</span><span class=p>.</span><span class=nx>reader</span><span class=p>.</span><span class=nf>ReadByte</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>typ</span> <span class=o>!=</span> <span class=nx>BULK</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=nx>bulk</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>p</span><span class=p>.</span><span class=nf>parseBulkString</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=nx>command</span><span class=p>.</span><span class=nx>Args</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span> <span class=p>=</span> <span class=nx>bulk</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>command</span><span class=p>.</span><span class=nx>Name</span> <span class=p>=</span> <span class=nb>string</span><span class=p>(</span><span class=nx>command</span><span class=p>.</span><span class=nx>Args</span><span class=p>[</span><span class=mi>0</span><span class=p>])</span>
+</span></span><span class=line><span class=cl>	<span class=nx>command</span><span class=p>.</span><span class=nx>Args</span> <span class=p>=</span> <span class=nx>command</span><span class=p>.</span><span class=nx>Args</span><span class=p>[</span><span class=mi>1</span><span class=p>:]</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>command</span><span class=p>,</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>p</span> <span class=o>*</span><span class=nx>Parser</span><span class=p>)</span> <span class=nf>parseBulkString</span><span class=p>()</span> <span class=p>([]</span><span class=kt>byte</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>length</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>p</span><span class=p>.</span><span class=nf>parseInteger</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>length</span> <span class=p>&lt;</span> <span class=mi>0</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>bulk</span> <span class=o>:=</span> <span class=nb>make</span><span class=p>([]</span><span class=kt>byte</span><span class=p>,</span> <span class=nx>length</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>_</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>io</span><span class=p>.</span><span class=nf>ReadFull</span><span class=p>(</span><span class=nx>p</span><span class=p>.</span><span class=nx>reader</span><span class=p>,</span> <span class=nx>bulk</span><span class=p>);</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>crlf</span> <span class=o>:=</span> <span class=nb>make</span><span class=p>([]</span><span class=kt>byte</span><span class=p>,</span> <span class=mi>2</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>_</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>io</span><span class=p>.</span><span class=nf>ReadFull</span><span class=p>(</span><span class=nx>p</span><span class=p>.</span><span class=nx>reader</span><span class=p>,</span> <span class=nx>crlf</span><span class=p>);</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=p>!</span><span class=nx>bytes</span><span class=p>.</span><span class=nf>Equal</span><span class=p>(</span><span class=nx>crlf</span><span class=p>,</span> <span class=nx>CRLF</span><span class=p>)</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>bulk</span><span class=p>,</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>p</span> <span class=o>*</span><span class=nx>Parser</span><span class=p>)</span> <span class=nf>parseInteger</span><span class=p>()</span> <span class=p>(</span><span class=kt>int</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>line</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>p</span><span class=p>.</span><span class=nx>reader</span><span class=p>.</span><span class=nf>ReadString</span><span class=p>(</span><span class=sc>&#39;\n&#39;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nb>len</span><span class=p>(</span><span class=nx>line</span><span class=p>)</span> <span class=p>&lt;</span> <span class=mi>3</span> <span class=o>||</span> <span class=nx>line</span><span class=p>[</span><span class=nb>len</span><span class=p>(</span><span class=nx>line</span><span class=p>)</span><span class=o>-</span><span class=mi>2</span><span class=p>]</span> <span class=o>!=</span> <span class=sc>&#39;\r&#39;</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>n</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>strconv</span><span class=p>.</span><span class=nf>Atoi</span><span class=p>(</span><span class=nx>line</span><span class=p>[:</span><span class=nb>len</span><span class=p>(</span><span class=nx>line</span><span class=p>)</span><span class=o>-</span><span class=mi>2</span><span class=p>])</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>n</span><span class=p>,</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>然后看看写入器部分，用于将结果包装成 RESP 协议后写入到客户端，还是先看一下基本的格式（以 STRING 举例）：</p><p>假设我执行了 <code>set a b</code> 需要返回 <code>OK</code>，那么按照 RESP 协议包装后的格式为：<code>+OK\r\n</code>。</p><p>现在我们可以很容易的写出以下代码：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>w</span> <span class=o>*</span><span class=nx>Writer</span><span class=p>)</span> <span class=nf>WriteString</span><span class=p>(</span><span class=nx>s</span> <span class=kt>string</span><span class=p>)</span> <span class=kt>error</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>_</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>w</span><span class=p>.</span><span class=nx>writer</span><span class=p>.</span><span class=nf>Write</span><span class=p>([]</span><span class=kt>byte</span><span class=p>{</span><span class=nx>STRING</span><span class=p>})</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>err</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>_</span><span class=p>,</span> <span class=nx>err</span> <span class=p>=</span> <span class=nx>w</span><span class=p>.</span><span class=nx>writer</span><span class=p>.</span><span class=nf>Write</span><span class=p>([]</span><span class=nb>byte</span><span class=p>(</span><span class=nx>s</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>err</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>_</span><span class=p>,</span> <span class=nx>err</span> <span class=p>=</span> <span class=nx>w</span><span class=p>.</span><span class=nx>writer</span><span class=p>.</span><span class=nf>Write</span><span class=p>(</span><span class=nx>CRLF</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>err</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>ERROR 和 INTEGER 同理。对于 BULK 类型略有不同，我们需要先写入长度，然后写入字符串，最后写入 CRLF。而数组则是先写入长度，然后写入CRLF，之后追加若干个 BULK。这里不做展开。</p><h2 id=network>Network</h2><p>首先我们从整体出发看看 FincasKV 的网络层的结构。</p><p><img src=/p/fincas-kv-network-design-and-impl/img1.png width=801 height=548 srcset="/p/fincas-kv-network-design-and-impl/img1_hu_23d99a9ae7834021.png 480w, /p/fincas-kv-network-design-and-impl/img1_hu_61029cceb9407de7.png 1024w" loading=lazy alt="Image 1" class=gallery-image data-flex-grow=146 data-flex-basis=350px></p><ol><li>连接建立:</li></ol><ul><li>客户端（Client）向服务器（Server）发起连接请求。</li><li>服务器接收连接并将其传递给事件循环（EventLoop）进行处理。</li></ul><ol start=2><li>创建连接处理器:</li></ol><ul><li>事件循环为每个连接创建一个连接处理器（ConnHandler），负责管理与客户端的交互。</li></ul><ol start=3><li>命令处理循环:</li></ol><ul><li>在命令处理的循环中，客户端向连接处理器发送命令。</li><li>连接处理器将命令传递给协议解析器（Parser）进行解析。</li></ul><ol start=4><li>解析命令:</li></ol><ul><li>协议解析器解析命令并将其传递给命令处理器（Handler）进行处理。</li></ul><ol start=5><li>判断命令类型:</li></ol><ul><li>写命令处理:<ul><li>如果是写命令且系统处于集群模式，命令处理器将检查当前节点是否为领导者（Leader）。</li><li>如果是领导者，命令被应用到 DB 层（FincasDB）。</li><li>如果是跟随者（Follower），则连接处理器会将请求重定向到领导者节点。</li></ul></li><li>读命令处理:<ul><li>如果是读命令或单节点模式，则直接在数据库中执行命令。</li></ul></li></ul><ol start=6><li>返回响应:</li></ol><ul><li>命令处理器将结果返回给连接处理器。</li><li>连接处理器将响应发送回客户端。</li></ul><p>同时可以参考以下时序图：</p><p><img src=/p/fincas-kv-network-design-and-impl/img2.png width=1620 height=1076 srcset="/p/fincas-kv-network-design-and-impl/img2_hu_3b44c16fd76e7c8.png 480w, /p/fincas-kv-network-design-and-impl/img2_hu_4a1696c7faf64f8e.png 1024w" loading=lazy alt="Image 2" class=gallery-image data-flex-grow=150 data-flex-basis=361px></p><p>下面看一下 Connection 的代码摘要：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span><span class=lnt>62
+</span><span class=lnt>63
+</span><span class=lnt>64
+</span><span class=lnt>65
+</span><span class=lnt>66
+</span><span class=lnt>67
+</span><span class=lnt>68
+</span><span class=lnt>69
+</span><span class=lnt>70
+</span><span class=lnt>71
+</span><span class=lnt>72
+</span><span class=lnt>73
+</span><span class=lnt>74
+</span><span class=lnt>75
+</span><span class=lnt>76
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span> <span class=nx>Connection</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>conn</span>   <span class=nx>netpoll</span><span class=p>.</span><span class=nx>Connection</span>
+</span></span><span class=line><span class=cl>	<span class=nx>parser</span> <span class=o>*</span><span class=nx>protocol</span><span class=p>.</span><span class=nx>Parser</span>
+</span></span><span class=line><span class=cl>	<span class=nx>writer</span> <span class=o>*</span><span class=nx>protocol</span><span class=p>.</span><span class=nx>Writer</span>
+</span></span><span class=line><span class=cl>	<span class=nx>ctx</span>    <span class=nx>context</span><span class=p>.</span><span class=nx>Context</span>
+</span></span><span class=line><span class=cl>	<span class=nx>cancel</span> <span class=nx>context</span><span class=p>.</span><span class=nx>CancelFunc</span>
+</span></span><span class=line><span class=cl>	<span class=nx>closed</span> <span class=kt>bool</span>
+</span></span><span class=line><span class=cl>	<span class=nx>mu</span>     <span class=nx>sync</span><span class=p>.</span><span class=nx>RWMutex</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=nf>New</span><span class=p>(</span><span class=nx>conn</span> <span class=nx>netpoll</span><span class=p>.</span><span class=nx>Connection</span><span class=p>)</span> <span class=o>*</span><span class=nx>Connection</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>ctx</span><span class=p>,</span> <span class=nx>cancel</span> <span class=o>:=</span> <span class=nx>context</span><span class=p>.</span><span class=nf>WithCancel</span><span class=p>(</span><span class=nx>context</span><span class=p>.</span><span class=nf>Background</span><span class=p>())</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>c</span> <span class=o>:=</span> <span class=o>&amp;</span><span class=nx>Connection</span><span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>conn</span><span class=p>:</span>   <span class=nx>conn</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>parser</span><span class=p>:</span> <span class=nx>protocol</span><span class=p>.</span><span class=nf>NewParser</span><span class=p>(</span><span class=nx>conn</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>		<span class=nx>writer</span><span class=p>:</span> <span class=nx>protocol</span><span class=p>.</span><span class=nf>NewWriter</span><span class=p>(</span><span class=nx>conn</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>		<span class=nx>ctx</span><span class=p>:</span>    <span class=nx>ctx</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>cancel</span><span class=p>:</span> <span class=nx>cancel</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>c</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>Connection</span><span class=p>)</span> <span class=nf>Close</span><span class=p>()</span> <span class=kt>error</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Lock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=k>defer</span> <span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>c</span><span class=p>.</span><span class=nx>closed</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>c</span><span class=p>.</span><span class=nx>closed</span> <span class=p>=</span> <span class=kc>true</span>
+</span></span><span class=line><span class=cl>	<span class=nx>c</span><span class=p>.</span><span class=nf>cancel</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>c</span><span class=p>.</span><span class=nx>conn</span><span class=p>.</span><span class=nf>Close</span><span class=p>()</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>Connection</span><span class=p>)</span> <span class=nf>IsClosed</span><span class=p>()</span> <span class=kt>bool</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>RLock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=k>defer</span> <span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>RUnlock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>c</span><span class=p>.</span><span class=nx>closed</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>Connection</span><span class=p>)</span> <span class=nf>ReadCommand</span><span class=p>()</span> <span class=p>(</span><span class=o>*</span><span class=nx>protocol</span><span class=p>.</span><span class=nx>Command</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Lock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=k>defer</span> <span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>cmd</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>c</span><span class=p>.</span><span class=nx>parser</span><span class=p>.</span><span class=nf>Parse</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=nx>err</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>cmd</span><span class=p>,</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>Connection</span><span class=p>)</span> <span class=nf>WriteString</span><span class=p>(</span><span class=nx>s</span> <span class=kt>string</span><span class=p>)</span> <span class=kt>error</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Lock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=k>defer</span> <span class=nx>c</span><span class=p>.</span><span class=nx>mu</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>err</span> <span class=o>:=</span> <span class=nx>c</span><span class=p>.</span><span class=nx>writer</span><span class=p>.</span><span class=nf>WriteString</span><span class=p>(</span><span class=nx>s</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>err</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1>// 以下方法同理</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>Connection</span><span class=p>)</span> <span class=nf>WriteError</span><span class=p>(</span><span class=nx>err</span> <span class=kt>error</span><span class=p>)</span> <span class=kt>error</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>Connection</span><span class=p>)</span> <span class=nf>WriteInteger</span><span class=p>(</span><span class=nx>n</span> <span class=kt>int64</span><span class=p>)</span> <span class=kt>error</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>Connection</span><span class=p>)</span> <span class=nf>WriteBulk</span><span class=p>(</span><span class=nx>b</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>)</span> <span class=kt>error</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>c</span> <span class=o>*</span><span class=nx>Connection</span><span class=p>)</span> <span class=nf>WriteArray</span><span class=p>(</span><span class=nx>arr</span> <span class=p>[][]</span><span class=kt>byte</span><span class=p>)</span> <span class=kt>error</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>Server:</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>  1
+</span><span class=lnt>  2
+</span><span class=lnt>  3
+</span><span class=lnt>  4
+</span><span class=lnt>  5
+</span><span class=lnt>  6
+</span><span class=lnt>  7
+</span><span class=lnt>  8
+</span><span class=lnt>  9
+</span><span class=lnt> 10
+</span><span class=lnt> 11
+</span><span class=lnt> 12
+</span><span class=lnt> 13
+</span><span class=lnt> 14
+</span><span class=lnt> 15
+</span><span class=lnt> 16
+</span><span class=lnt> 17
+</span><span class=lnt> 18
+</span><span class=lnt> 19
+</span><span class=lnt> 20
+</span><span class=lnt> 21
+</span><span class=lnt> 22
+</span><span class=lnt> 23
+</span><span class=lnt> 24
+</span><span class=lnt> 25
+</span><span class=lnt> 26
+</span><span class=lnt> 27
+</span><span class=lnt> 28
+</span><span class=lnt> 29
+</span><span class=lnt> 30
+</span><span class=lnt> 31
+</span><span class=lnt> 32
+</span><span class=lnt> 33
+</span><span class=lnt> 34
+</span><span class=lnt> 35
+</span><span class=lnt> 36
+</span><span class=lnt> 37
+</span><span class=lnt> 38
+</span><span class=lnt> 39
+</span><span class=lnt> 40
+</span><span class=lnt> 41
+</span><span class=lnt> 42
+</span><span class=lnt> 43
+</span><span class=lnt> 44
+</span><span class=lnt> 45
+</span><span class=lnt> 46
+</span><span class=lnt> 47
+</span><span class=lnt> 48
+</span><span class=lnt> 49
+</span><span class=lnt> 50
+</span><span class=lnt> 51
+</span><span class=lnt> 52
+</span><span class=lnt> 53
+</span><span class=lnt> 54
+</span><span class=lnt> 55
+</span><span class=lnt> 56
+</span><span class=lnt> 57
+</span><span class=lnt> 58
+</span><span class=lnt> 59
+</span><span class=lnt> 60
+</span><span class=lnt> 61
+</span><span class=lnt> 62
+</span><span class=lnt> 63
+</span><span class=lnt> 64
+</span><span class=lnt> 65
+</span><span class=lnt> 66
+</span><span class=lnt> 67
+</span><span class=lnt> 68
+</span><span class=lnt> 69
+</span><span class=lnt> 70
+</span><span class=lnt> 71
+</span><span class=lnt> 72
+</span><span class=lnt> 73
+</span><span class=lnt> 74
+</span><span class=lnt> 75
+</span><span class=lnt> 76
+</span><span class=lnt> 77
+</span><span class=lnt> 78
+</span><span class=lnt> 79
+</span><span class=lnt> 80
+</span><span class=lnt> 81
+</span><span class=lnt> 82
+</span><span class=lnt> 83
+</span><span class=lnt> 84
+</span><span class=lnt> 85
+</span><span class=lnt> 86
+</span><span class=lnt> 87
+</span><span class=lnt> 88
+</span><span class=lnt> 89
+</span><span class=lnt> 90
+</span><span class=lnt> 91
+</span><span class=lnt> 92
+</span><span class=lnt> 93
+</span><span class=lnt> 94
+</span><span class=lnt> 95
+</span><span class=lnt> 96
+</span><span class=lnt> 97
+</span><span class=lnt> 98
+</span><span class=lnt> 99
+</span><span class=lnt>100
+</span><span class=lnt>101
+</span><span class=lnt>102
+</span><span class=lnt>103
+</span><span class=lnt>104
+</span><span class=lnt>105
+</span><span class=lnt>106
+</span><span class=lnt>107
+</span><span class=lnt>108
+</span><span class=lnt>109
+</span><span class=lnt>110
+</span><span class=lnt>111
+</span><span class=lnt>112
+</span><span class=lnt>113
+</span><span class=lnt>114
+</span><span class=lnt>115
+</span><span class=lnt>116
+</span><span class=lnt>117
+</span><span class=lnt>118
+</span><span class=lnt>119
+</span><span class=lnt>120
+</span><span class=lnt>121
+</span><span class=lnt>122
+</span><span class=lnt>123
+</span><span class=lnt>124
+</span><span class=lnt>125
+</span><span class=lnt>126
+</span><span class=lnt>127
+</span><span class=lnt>128
+</span><span class=lnt>129
+</span><span class=lnt>130
+</span><span class=lnt>131
+</span><span class=lnt>132
+</span><span class=lnt>133
+</span><span class=lnt>134
+</span><span class=lnt>135
+</span><span class=lnt>136
+</span><span class=lnt>137
+</span><span class=lnt>138
+</span><span class=lnt>139
+</span><span class=lnt>140
+</span><span class=lnt>141
+</span><span class=lnt>142
+</span><span class=lnt>143
+</span><span class=lnt>144
+</span><span class=lnt>145
+</span><span class=lnt>146
+</span><span class=lnt>147
+</span><span class=lnt>148
+</span><span class=lnt>149
+</span><span class=lnt>150
+</span><span class=lnt>151
+</span><span class=lnt>152
+</span><span class=lnt>153
+</span><span class=lnt>154
+</span><span class=lnt>155
+</span><span class=lnt>156
+</span><span class=lnt>157
+</span><span class=lnt>158
+</span><span class=lnt>159
+</span><span class=lnt>160
+</span><span class=lnt>161
+</span><span class=lnt>162
+</span><span class=lnt>163
+</span><span class=lnt>164
+</span><span class=lnt>165
+</span><span class=lnt>166
+</span><span class=lnt>167
+</span><span class=lnt>168
+</span><span class=lnt>169
+</span><span class=lnt>170
+</span><span class=lnt>171
+</span><span class=lnt>172
+</span><span class=lnt>173
+</span><span class=lnt>174
+</span><span class=lnt>175
+</span><span class=lnt>176
+</span><span class=lnt>177
+</span><span class=lnt>178
+</span><span class=lnt>179
+</span><span class=lnt>180
+</span><span class=lnt>181
+</span><span class=lnt>182
+</span><span class=lnt>183
+</span><span class=lnt>184
+</span><span class=lnt>185
+</span><span class=lnt>186
+</span><span class=lnt>187
+</span><span class=lnt>188
+</span><span class=lnt>189
+</span><span class=lnt>190
+</span><span class=lnt>191
+</span><span class=lnt>192
+</span><span class=lnt>193
+</span><span class=lnt>194
+</span><span class=lnt>195
+</span><span class=lnt>196
+</span><span class=lnt>197
+</span><span class=lnt>198
+</span><span class=lnt>199
+</span><span class=lnt>200
+</span><span class=lnt>201
+</span><span class=lnt>202
+</span><span class=lnt>203
+</span><span class=lnt>204
+</span><span class=lnt>205
+</span><span class=lnt>206
+</span><span class=lnt>207
+</span><span class=lnt>208
+</span><span class=lnt>209
+</span><span class=lnt>210
+</span><span class=lnt>211
+</span><span class=lnt>212
+</span><span class=lnt>213
+</span><span class=lnt>214
+</span><span class=lnt>215
+</span><span class=lnt>216
+</span><span class=lnt>217
+</span><span class=lnt>218
+</span><span class=lnt>219
+</span><span class=lnt>220
+</span><span class=lnt>221
+</span><span class=lnt>222
+</span><span class=lnt>223
+</span><span class=lnt>224
+</span><span class=lnt>225
+</span><span class=lnt>226
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span> <span class=nx>Config</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>Addr</span>           <span class=kt>string</span>
+</span></span><span class=line><span class=cl>	<span class=nx>IdleTimeout</span>    <span class=nx>time</span><span class=p>.</span><span class=nx>Duration</span>
+</span></span><span class=line><span class=cl>	<span class=nx>MaxConnections</span> <span class=kt>int</span>
+</span></span><span class=line><span class=cl>	<span class=nx>ReadTimeout</span>    <span class=nx>time</span><span class=p>.</span><span class=nx>Duration</span>
+</span></span><span class=line><span class=cl>	<span class=nx>WriteTimeout</span>   <span class=nx>time</span><span class=p>.</span><span class=nx>Duration</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>type</span> <span class=nx>Server</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>cfg</span>       <span class=o>*</span><span class=nx>Config</span>
+</span></span><span class=line><span class=cl>	<span class=nx>db</span>        <span class=o>*</span><span class=nx>database</span><span class=p>.</span><span class=nx>FincasDB</span>
+</span></span><span class=line><span class=cl>	<span class=nx>handler</span>   <span class=o>*</span><span class=nx>handler</span><span class=p>.</span><span class=nx>Handler</span>
+</span></span><span class=line><span class=cl>	<span class=nx>eventLoop</span> <span class=nx>netpoll</span><span class=p>.</span><span class=nx>EventLoop</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>conns</span>  <span class=nx>sync</span><span class=p>.</span><span class=nx>Map</span>
+</span></span><span class=line><span class=cl>	<span class=nx>connWg</span> <span class=nx>sync</span><span class=p>.</span><span class=nx>WaitGroup</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>stats</span> <span class=o>*</span><span class=nx>Stats</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>ctx</span>     <span class=nx>context</span><span class=p>.</span><span class=nx>Context</span>
+</span></span><span class=line><span class=cl>	<span class=nx>cancel</span>  <span class=nx>context</span><span class=p>.</span><span class=nx>CancelFunc</span>
+</span></span><span class=line><span class=cl>	<span class=nx>closed</span>  <span class=kt>bool</span>
+</span></span><span class=line><span class=cl>	<span class=nx>closeMu</span> <span class=nx>sync</span><span class=p>.</span><span class=nx>RWMutex</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>metricsTicker</span> <span class=o>*</span><span class=nx>time</span><span class=p>.</span><span class=nx>Ticker</span>
+</span></span><span class=line><span class=cl>	<span class=nx>metricsCancel</span> <span class=nx>context</span><span class=p>.</span><span class=nx>CancelFunc</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>node</span> <span class=o>*</span><span class=nx>node</span><span class=p>.</span><span class=nx>Node</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=nf>New</span><span class=p>(</span><span class=nx>db</span> <span class=o>*</span><span class=nx>database</span><span class=p>.</span><span class=nx>FincasDB</span><span class=p>,</span> <span class=nx>address</span> <span class=o>*</span><span class=kt>string</span><span class=p>)</span> <span class=p>(</span><span class=o>*</span><span class=nx>Server</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=kd>var</span> <span class=p>(</span>
+</span></span><span class=line><span class=cl>		<span class=nx>addr</span>           <span class=p>=</span> <span class=s>&#34;:8911&#34;</span>
+</span></span><span class=line><span class=cl>		<span class=nx>idleTimeout</span>    <span class=p>=</span> <span class=mi>5</span> <span class=o>*</span> <span class=nx>time</span><span class=p>.</span><span class=nx>Second</span>
+</span></span><span class=line><span class=cl>		<span class=nx>maxConnections</span> <span class=p>=</span> <span class=mi>1000</span>
+</span></span><span class=line><span class=cl>		<span class=nx>readTimeout</span>    <span class=p>=</span> <span class=mi>10</span> <span class=o>*</span> <span class=nx>time</span><span class=p>.</span><span class=nx>Second</span>
+</span></span><span class=line><span class=cl>		<span class=nx>writeTimeout</span>   <span class=p>=</span> <span class=mi>10</span> <span class=o>*</span> <span class=nx>time</span><span class=p>.</span><span class=nx>Second</span>
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl>	
+</span></span><span class=line><span class=cl>	<span class=c1>// 省略配置获取部分</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>cfg</span> <span class=o>:=</span> <span class=o>&amp;</span><span class=nx>Config</span><span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>Addr</span><span class=p>:</span>           <span class=nx>addr</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>IdleTimeout</span><span class=p>:</span>    <span class=nx>idleTimeout</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>MaxConnections</span><span class=p>:</span> <span class=nx>maxConnections</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>ReadTimeout</span><span class=p>:</span>    <span class=nx>readTimeout</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>WriteTimeout</span><span class=p>:</span>   <span class=nx>writeTimeout</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>ctx</span><span class=p>,</span> <span class=nx>cancel</span> <span class=o>:=</span> <span class=nx>context</span><span class=p>.</span><span class=nf>WithCancel</span><span class=p>(</span><span class=nx>context</span><span class=p>.</span><span class=nf>Background</span><span class=p>())</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span> <span class=o>:=</span> <span class=o>&amp;</span><span class=nx>Server</span><span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>cfg</span><span class=p>:</span>     <span class=nx>cfg</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>db</span><span class=p>:</span>      <span class=nx>db</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>handler</span><span class=p>:</span> <span class=nx>handler</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=nx>db</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>		<span class=nx>stats</span><span class=p>:</span>   <span class=o>&amp;</span><span class=nx>Stats</span><span class=p>{</span><span class=nx>StartTime</span><span class=p>:</span> <span class=nx>time</span><span class=p>.</span><span class=nf>Now</span><span class=p>()},</span>
+</span></span><span class=line><span class=cl>		<span class=nx>ctx</span><span class=p>:</span>     <span class=nx>ctx</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>cancel</span><span class=p>:</span>  <span class=nx>cancel</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>eventLoop</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>netpoll</span><span class=p>.</span><span class=nf>NewEventLoop</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>		<span class=kd>func</span><span class=p>(</span><span class=nx>ctx</span> <span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span> <span class=nx>conn</span> <span class=nx>netpoll</span><span class=p>.</span><span class=nx>Connection</span><span class=p>)</span> <span class=kt>error</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=k>return</span> <span class=nx>s</span><span class=p>.</span><span class=nf>handleConnection</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span> <span class=nx>conn</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=p>},</span>
+</span></span><span class=line><span class=cl>		<span class=nx>netpoll</span><span class=p>.</span><span class=nf>WithOnPrepare</span><span class=p>(</span><span class=kd>func</span><span class=p>(</span><span class=nx>connection</span> <span class=nx>netpoll</span><span class=p>.</span><span class=nx>Connection</span><span class=p>)</span> <span class=nx>context</span><span class=p>.</span><span class=nx>Context</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=k>return</span> <span class=nx>context</span><span class=p>.</span><span class=nf>Background</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>		<span class=p>}),</span>
+</span></span><span class=line><span class=cl>		<span class=nx>netpoll</span><span class=p>.</span><span class=nf>WithIdleTimeout</span><span class=p>(</span><span class=nx>idleTimeout</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>		<span class=nx>netpoll</span><span class=p>.</span><span class=nf>WithReadTimeout</span><span class=p>(</span><span class=nx>readTimeout</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>		<span class=nx>netpoll</span><span class=p>.</span><span class=nf>WithWriteTimeout</span><span class=p>(</span><span class=nx>writeTimeout</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=kc>nil</span><span class=p>,</span> <span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;failed to create netpoll eventLoop: %v&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>eventLoop</span> <span class=p>=</span> <span class=nx>eventLoop</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>s</span><span class=p>,</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Server</span><span class=p>)</span> <span class=nf>Start</span><span class=p>()</span> <span class=kt>error</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>closeMu</span><span class=p>.</span><span class=nf>Lock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>s</span><span class=p>.</span><span class=nx>closed</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>s</span><span class=p>.</span><span class=nx>closeMu</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;server is already closed&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>closeMu</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nf>startMetricsCollection</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>listener</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>netpoll</span><span class=p>.</span><span class=nf>CreateListener</span><span class=p>(</span><span class=s>&#34;tcp&#34;</span><span class=p>,</span> <span class=nx>s</span><span class=p>.</span><span class=nx>cfg</span><span class=p>.</span><span class=nx>Addr</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;failed to create listener: %v&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>log</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;listening on %s&#34;</span><span class=p>,</span> <span class=nx>s</span><span class=p>.</span><span class=nx>cfg</span><span class=p>.</span><span class=nx>Addr</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>eventLoop</span><span class=p>.</span><span class=nf>Serve</span><span class=p>(</span><span class=nx>listener</span><span class=p>);</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;failed to start eventLoop: %v&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Server</span><span class=p>)</span> <span class=nf>Stop</span><span class=p>()</span> <span class=kt>error</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>closeMu</span><span class=p>.</span><span class=nf>Lock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>s</span><span class=p>.</span><span class=nx>closed</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>s</span><span class=p>.</span><span class=nx>closeMu</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;server already closed&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>closed</span> <span class=p>=</span> <span class=kc>true</span>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>closeMu</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nf>cancel</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>s</span><span class=p>.</span><span class=nx>metricsCancel</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>s</span><span class=p>.</span><span class=nf>metricsCancel</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>s</span><span class=p>.</span><span class=nx>node</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>node</span><span class=p>.</span><span class=nf>Shutdown</span><span class=p>();</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=nx>log</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;failed to shutdown node: %v&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>conns</span><span class=p>.</span><span class=nf>Range</span><span class=p>(</span><span class=kd>func</span><span class=p>(</span><span class=nx>key</span><span class=p>,</span> <span class=nx>value</span> <span class=kd>interface</span><span class=p>{})</span> <span class=kt>bool</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>c</span><span class=p>,</span> <span class=nx>ok</span> <span class=o>:=</span> <span class=nx>value</span><span class=p>.(</span><span class=nx>conn</span><span class=p>.</span><span class=nx>Connection</span><span class=p>);</span> <span class=nx>ok</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=nx>c</span><span class=p>.</span><span class=nf>Close</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=kc>true</span>
+</span></span><span class=line><span class=cl>	<span class=p>})</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>connWg</span><span class=p>.</span><span class=nf>Wait</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>s</span><span class=p>.</span><span class=nx>eventLoop</span><span class=p>.</span><span class=nf>Shutdown</span><span class=p>(</span><span class=nx>context</span><span class=p>.</span><span class=nf>Background</span><span class=p>())</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Server</span><span class=p>)</span> <span class=nf>handleConnection</span><span class=p>(</span><span class=nx>ctx</span> <span class=nx>context</span><span class=p>.</span><span class=nx>Context</span><span class=p>,</span> <span class=nx>c</span> <span class=nx>netpoll</span><span class=p>.</span><span class=nx>Connection</span><span class=p>)</span> <span class=kt>error</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>atomic</span><span class=p>.</span><span class=nf>LoadInt64</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>s</span><span class=p>.</span><span class=nx>stats</span><span class=p>.</span><span class=nx>ConnCount</span><span class=p>)</span> <span class=o>&gt;=</span> <span class=nb>int64</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>cfg</span><span class=p>.</span><span class=nx>MaxConnections</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>c</span><span class=p>.</span><span class=nf>Close</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;max connections reached&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>connection</span> <span class=o>:=</span> <span class=nx>conn</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=nx>c</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>conns</span><span class=p>.</span><span class=nf>Store</span><span class=p>(</span><span class=nx>c</span><span class=p>,</span> <span class=nx>connection</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>connWg</span><span class=p>.</span><span class=nf>Add</span><span class=p>(</span><span class=mi>1</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>defer</span> <span class=kd>func</span><span class=p>()</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>connection</span><span class=p>.</span><span class=nf>Close</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>		<span class=nx>s</span><span class=p>.</span><span class=nx>conns</span><span class=p>.</span><span class=nf>Delete</span><span class=p>(</span><span class=nx>c</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=nx>s</span><span class=p>.</span><span class=nx>connWg</span><span class=p>.</span><span class=nf>Done</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=p>}()</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>select</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>case</span> <span class=o>&lt;-</span><span class=nx>ctx</span><span class=p>.</span><span class=nf>Done</span><span class=p>():</span>
+</span></span><span class=line><span class=cl>			<span class=k>return</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl>		<span class=k>default</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>			<span class=nx>start</span> <span class=o>:=</span> <span class=nx>time</span><span class=p>.</span><span class=nf>Now</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>			<span class=nx>cmd</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>connection</span><span class=p>.</span><span class=nf>ReadCommand</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>			<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>				<span class=k>if</span> <span class=nx>errors</span><span class=p>.</span><span class=nf>Is</span><span class=p>(</span><span class=nx>err</span><span class=p>,</span> <span class=nx>netpoll</span><span class=p>.</span><span class=nx>ErrConnClosed</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>					<span class=k>return</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl>				<span class=p>}</span>
+</span></span><span class=line><span class=cl>				<span class=nx>log</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;failed to read command: %v&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>				<span class=k>continue</span>
+</span></span><span class=line><span class=cl>			<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>			<span class=c1>// 处理 cluster 命令</span>
+</span></span><span class=line><span class=cl>			<span class=k>if</span> <span class=nx>strings</span><span class=p>.</span><span class=nf>ToUpper</span><span class=p>(</span><span class=nx>cmd</span><span class=p>.</span><span class=nx>Name</span><span class=p>)</span> <span class=o>==</span> <span class=s>&#34;CLUSTER&#34;</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>				<span class=k>if</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>s</span><span class=p>.</span><span class=nf>handleClusterCommand</span><span class=p>(</span><span class=nx>connection</span><span class=p>,</span> <span class=nx>cmd</span><span class=p>);</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>					<span class=nx>log</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;failed to handle cluster command: %v&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>				<span class=p>}</span>
+</span></span><span class=line><span class=cl>				<span class=k>continue</span>
+</span></span><span class=line><span class=cl>			<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>			<span class=c1>// 禁止非Leader节点处理写操作</span>
+</span></span><span class=line><span class=cl>			<span class=nx>cmdP</span><span class=p>,</span> <span class=nx>ok</span> <span class=o>:=</span> <span class=nf>isWriteCommand</span><span class=p>(</span><span class=nx>cmd</span><span class=p>.</span><span class=nx>Name</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>			<span class=k>if</span> <span class=nx>ok</span> <span class=o>&amp;&amp;</span> <span class=nx>s</span><span class=p>.</span><span class=nx>node</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=o>&amp;&amp;</span> <span class=p>!</span><span class=nx>s</span><span class=p>.</span><span class=nx>node</span><span class=p>.</span><span class=nf>IsLeader</span><span class=p>()</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>				<span class=nx>leaderAddr</span> <span class=o>:=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>node</span>
+</span></span><span class=line><span class=cl>				<span class=k>return</span> <span class=nx>connection</span><span class=p>.</span><span class=nf>WriteError</span><span class=p>(</span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;redirect to leader: %s&#34;</span><span class=p>,</span> <span class=nx>leaderAddr</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>			<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>			<span class=k>if</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>handler</span><span class=p>.</span><span class=nf>Handle</span><span class=p>(</span><span class=nx>connection</span><span class=p>,</span> <span class=nx>cmd</span><span class=p>);</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>				<span class=nx>s</span><span class=p>.</span><span class=nx>stats</span><span class=p>.</span><span class=nf>IncrErrorCount</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>				<span class=nx>log</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;failed to handle command: %v&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>			<span class=p>}</span> <span class=k>else</span> <span class=k>if</span> <span class=nx>s</span><span class=p>.</span><span class=nx>node</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>				<span class=nx>err</span> <span class=o>:=</span> <span class=nx>s</span><span class=p>.</span><span class=nx>node</span><span class=p>.</span><span class=nf>Apply</span><span class=p>(</span><span class=nx>command</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=nx>cmdP</span><span class=p>.</span><span class=nx>CmdType</span><span class=p>,</span> <span class=nx>cmdP</span><span class=p>.</span><span class=nx>Method</span><span class=p>,</span> <span class=nx>cmd</span><span class=p>.</span><span class=nx>Args</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>				<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>					<span class=k>return</span> <span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;failed to apply command: %v&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>				<span class=p>}</span>
+</span></span><span class=line><span class=cl>			<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>Server</span><span class=p>)</span> <span class=nf>initCluster</span><span class=p>(</span><span class=nx>conf</span> <span class=o>*</span><span class=nx>node</span><span class=p>.</span><span class=nx>Config</span><span class=p>)</span> <span class=kt>error</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>n</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>node</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>db</span><span class=p>,</span> <span class=nx>conf</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nx>node</span> <span class=p>=</span> <span class=nx>n</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1>// 以下方法用于判断是否为写命令以及和 Cluster Handler 相对应</span>
+</span></span><span class=line><span class=cl><span class=kd>type</span> <span class=nx>cmdPair</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>CmdType</span> <span class=nx>command</span><span class=p>.</span><span class=nx>CmdTyp</span>
+</span></span><span class=line><span class=cl>	<span class=nx>Method</span>  <span class=nx>command</span><span class=p>.</span><span class=nx>MethodTyp</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=nf>isWriteCommand</span><span class=p>(</span><span class=nx>cmd</span> <span class=kt>string</span><span class=p>)</span> <span class=p>(</span><span class=nx>cmdPair</span><span class=p>,</span> <span class=kt>bool</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>wCmds</span> <span class=o>:=</span> <span class=kd>map</span><span class=p>[</span><span class=kt>string</span><span class=p>]</span><span class=nx>cmdPair</span><span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;SET&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdString</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodSet</span><span class=p>},</span> <span class=s>&#34;DEL&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdString</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodDel</span><span class=p>},</span> <span class=s>&#34;INCR&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdString</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodIncr</span><span class=p>},</span> <span class=s>&#34;INCRBY&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdString</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodIncrBy</span><span class=p>},</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;DECR&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdString</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodDecr</span><span class=p>},</span> <span class=s>&#34;DECRBY&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdString</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodDecrBy</span><span class=p>},</span> <span class=s>&#34;APPEND&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdString</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodAppend</span><span class=p>},</span> <span class=s>&#34;GETSET&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdString</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodGetSet</span><span class=p>},</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;SETNX&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdString</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodSetNX</span><span class=p>},</span> <span class=s>&#34;MSET&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdString</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodMSet</span><span class=p>},</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;HSET&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdHash</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodHSet</span><span class=p>},</span> <span class=s>&#34;HMSET&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdHash</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodHMSet</span><span class=p>},</span> <span class=s>&#34;HDEL&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdHash</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodHDel</span><span class=p>},</span> <span class=s>&#34;HINCRBY&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdHash</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodHIncrBy</span><span class=p>},</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;HINCRBYFLOAT&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdHash</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodHIncrByFloat</span><span class=p>},</span> <span class=s>&#34;HSETNX&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdHash</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodHSetNX</span><span class=p>},</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;LPUSH&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdList</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodLPush</span><span class=p>},</span> <span class=s>&#34;RPUSH&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdList</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodRPush</span><span class=p>},</span> <span class=s>&#34;LPOP&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdList</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodLPop</span><span class=p>},</span> <span class=s>&#34;RPOP&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdList</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodRPop</span><span class=p>},</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;LTRIM&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdList</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodLTrim</span><span class=p>},</span> <span class=s>&#34;LINSERT&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdList</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodLInsert</span><span class=p>},</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;SADD&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdSet</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodSAdd</span><span class=p>},</span> <span class=s>&#34;SREM&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdSet</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodSRem</span><span class=p>},</span> <span class=s>&#34;SPOP&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdSet</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodSPop</span><span class=p>},</span> <span class=s>&#34;SMOVE&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdSet</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodSMove</span><span class=p>},</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;ZADD&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdZSet</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodZAdd</span><span class=p>},</span> <span class=s>&#34;ZREM&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdZSet</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodZRem</span><span class=p>},</span> <span class=s>&#34;ZINCRBY&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdZSet</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodZIncrBy</span><span class=p>},</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;ZREMRANGEBYRANK&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdZSet</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodZRemRangeByRank</span><span class=p>},</span> <span class=s>&#34;ZREMRANGEBYSCORE&#34;</span><span class=p>:</span> <span class=p>{</span><span class=nx>command</span><span class=p>.</span><span class=nx>CmdZSet</span><span class=p>,</span> <span class=nx>command</span><span class=p>.</span><span class=nx>MethodZRemRangeByScore</span><span class=p>},</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=nx>val</span><span class=p>,</span> <span class=nx>ok</span> <span class=o>:=</span> <span class=nx>wCmds</span><span class=p>[</span><span class=nx>strings</span><span class=p>.</span><span class=nf>ToUpper</span><span class=p>(</span><span class=nx>cmd</span><span class=p>)]</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>val</span><span class=p>,</span> <span class=nx>ok</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>Handler 简要代码：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span> <span class=nx>Handler</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>db</span> <span class=o>*</span><span class=nx>database</span><span class=p>.</span><span class=nx>FincasDB</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=nf>New</span><span class=p>(</span><span class=nx>db</span> <span class=o>*</span><span class=nx>database</span><span class=p>.</span><span class=nx>FincasDB</span><span class=p>)</span> <span class=o>*</span><span class=nx>Handler</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=o>&amp;</span><span class=nx>Handler</span><span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>db</span><span class=p>:</span> <span class=nx>db</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>h</span> <span class=o>*</span><span class=nx>Handler</span><span class=p>)</span> <span class=nf>Handle</span><span class=p>(</span><span class=nx>conn</span> <span class=o>*</span><span class=nx>conn</span><span class=p>.</span><span class=nx>Connection</span><span class=p>,</span> <span class=nx>cmd</span> <span class=o>*</span><span class=nx>protocol</span><span class=p>.</span><span class=nx>Command</span><span class=p>)</span> <span class=kt>error</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>switch</span> <span class=nx>strings</span><span class=p>.</span><span class=nf>ToUpper</span><span class=p>(</span><span class=nx>cmd</span><span class=p>.</span><span class=nx>Name</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>case</span> <span class=s>&#34;PING&#34;</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>        <span class=k>return</span> <span class=nx>h</span><span class=p>.</span><span class=nf>handlePing</span><span class=p>(</span><span class=nx>conn</span><span class=p>,</span> <span class=nx>cmd</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=c1>// 省略其他指令</span>
+</span></span><span class=line><span class=cl>    <span class=k>default</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>        <span class=k>return</span> <span class=nx>conn</span><span class=p>.</span><span class=nf>WriteError</span><span class=p>(</span><span class=nx>errors</span><span class=p>.</span><span class=nf>New</span><span class=p>(</span><span class=s>&#34;unknown command&#34;</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>h</span> <span class=o>*</span><span class=nx>Handler</span><span class=p>)</span> <span class=nf>handlePing</span><span class=p>(</span><span class=nx>conn</span> <span class=o>*</span><span class=nx>conn</span><span class=p>.</span><span class=nx>Connection</span><span class=p>,</span> <span class=nx>cmd</span> <span class=o>*</span><span class=nx>protocol</span><span class=p>.</span><span class=nx>Command</span><span class=p>)</span> <span class=kt>error</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=nb>len</span><span class=p>(</span><span class=nx>cmd</span><span class=p>.</span><span class=nx>Args</span><span class=p>)</span> <span class=p>&gt;</span> <span class=mi>1</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=k>return</span> <span class=nx>conn</span><span class=p>.</span><span class=nf>WriteError</span><span class=p>(</span><span class=nx>ErrWrongArgCount</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=k>if</span> <span class=nb>len</span><span class=p>(</span><span class=nx>cmd</span><span class=p>.</span><span class=nx>Args</span><span class=p>)</span> <span class=o>==</span> <span class=mi>1</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=k>return</span> <span class=nx>conn</span><span class=p>.</span><span class=nf>WriteString</span><span class=p>(</span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;PONG %s&#34;</span><span class=p>,</span> <span class=nb>string</span><span class=p>(</span><span class=nx>cmd</span><span class=p>.</span><span class=nx>Args</span><span class=p>[</span><span class=mi>0</span><span class=p>])))</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=nx>conn</span><span class=p>.</span><span class=nf>WriteString</span><span class=p>(</span><span class=s>&#34;PONG&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1>// 省略其他指令 handle</span>
+</span></span></code></pre></td></tr></table></div></div><p>对于分布式支持更多的是基于 hashicorp/raft 库对于网络层的扩展，且 FSM 部分和 Handler 有些重复，这里可以直接阅读 Raft 论文后直接看 cluster 包下的代码即可。后续会对 FSM 进行一些调整，复用 Network Handler。</p><hr><p>结束。</p></section><footer class=article-footer><section class=article-tags><a href=/tags/golang/>Golang</a>
+<a href=/tags/fincaskv/>FincasKV</a>
+<a href=/tags/kv-storage/>KV Storage</a>
+<a href=/tags/network/>Network</a></section><section class=article-copyright><svg class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css integrity=sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js integrity=sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js integrity=sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05 crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{const e=document.querySelector(".main-article");renderMathInElement(e,{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}],ignoredClasses:["gist"]})})</script></article><aside class=related-content--wrapper><h2 class=section-title>相关文章</h2><div class=related-content><div class="flex article-list--tile"><article><a href=/p/fincas-kv-db-design-and-impl/><div class=article-details><h2 class=article-title>FincasKV - DB层设计与实现</h2></div></a></article><article><a href=/p/fincas-kv-storage-design-and-impl/><div class=article-details><h2 class=article-title>FincasKV - 存储层设计与实现</h2></div></a></article></div></div></aside><link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css><div id=vssue></div><script src=https://unpkg.com/vue@2/dist/vue.runtime.min.js></script><script src=https://unpkg.com/vssue/dist/vssue.github.min.js></script><script>new Vue({el:"#vssue",render:e=>e("Vssue",{props:{title:"FincasKV - 网络层设计与实现",options:{autoCreateIssue:!0,owner:"FinnTew",repo:"blog-comments",clientId:"Ov23liKS3gJoM4gkl7fL",clientSecret:"1f652d3a84fa45475ff7ffe25e89dc72cf9434af"}}})})</script><footer class=site-footer><section class=copyright>&copy;
+2024 -
+2025 FinnTew's Blog</section><section class=powerby>使用 <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> 构建<br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.30.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css crossorigin=anonymous></main></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z+KMkF24hUW8WePSA9HM=" crossorigin=anonymous></script><script type=text/javascript src=/ts/main.1e9a3bafd846ced4c345d084b355fb8c7bae75701c338f8a1f8a82c780137826.js defer></script><script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

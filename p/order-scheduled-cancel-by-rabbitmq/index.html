@@ -1,0 +1,612 @@
+<!doctype html><html lang=en dir=ltr><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><meta name=description content="使用 RabbitMQ 死信交换机实现订单定时取消，及使用延时队列插件优化实现"><title>字节青训营 - [抖音电商项目] 使用 RabbitMQ 实现订单定时取消</title>
+<link rel=canonical href=https://finntew.github.io/p/order-scheduled-cancel-by-rabbitmq/><link rel=stylesheet href=/scss/style.min.663803bebe609202d5b39d848f2d7c2dc8b598a2d879efa079fa88893d29c49c.css><meta property='og:title' content="字节青训营 - [抖音电商项目] 使用 RabbitMQ 实现订单定时取消"><meta property='og:description' content="使用 RabbitMQ 死信交换机实现订单定时取消，及使用延时队列插件优化实现"><meta property='og:url' content='https://finntew.github.io/p/order-scheduled-cancel-by-rabbitmq/'><meta property='og:site_name' content="FinnTew's Blog"><meta property='og:type' content='article'><meta property='article:section' content='Post'><meta property='article:tag' content='字节青训营'><meta property='article:tag' content='Golang'><meta property='article:tag' content='RabbitMQ'><meta property='article:published_time' content='2025-01-18T22:01:51+08:00'><meta property='article:modified_time' content='2025-01-18T22:01:51+08:00'><meta name=twitter:title content="字节青训营 - [抖音电商项目] 使用 RabbitMQ 实现订单定时取消"><meta name=twitter:description content="使用 RabbitMQ 死信交换机实现订单定时取消，及使用延时队列插件优化实现"><link rel="shortcut icon" href=/favicon.png></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.getItem(e)||localStorage.setItem(e,"auto")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/><img src=/img/avatar_hu_d919a87470c417cb.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+</a><span class=emoji>💤</span></figure><div class=site-meta><h1 class=site-name><a href=/>FinnTew's Blog</a></h1><h2 class=site-description>Energy = Milk x Coffee²</h2></div></header><ol class=menu id=main-menu><li><a href=/><svg class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>Home</span></a></li><li><a href=/archives/><svg class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>Archives</span></a></li><li><a href=/search/><svg class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>Search</span></a></li><li class=menu-bottom-section><ol class=menu><li id=dark-mode-toggle><svg class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="8" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<svg class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="16" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<span>暗色模式</span></li></ol></li></ol></aside><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#一前言>一、前言</a></li><li><a href=#二实现方案>二、实现方案</a><ol><li><a href=#1-使用死信交换机配合死信队列实现>1) 使用死信交换机配合死信队列实现</a><ol><li><a href=#一些介绍>一些介绍</a></li><li><a href=#demo-实现>Demo 实现</a></li></ol></li><li><a href=#2-使用延时队列插件实现>2) 使用延时队列插件实现</a><ol><li><a href=#一些介绍-1>一些介绍</a></li><li><a href=#demo-实现-1>Demo 实现</a></li></ol></li></ol></li><li><a href=#三总结>三、总结</a></li></ol></nav></div></section></aside><main class="main full-width"><article class=main-article><header class=article-header><div class=article-details><div class=article-title-wrapper><h2 class=article-title><a href=/p/order-scheduled-cancel-by-rabbitmq/>字节青训营 - [抖音电商项目] 使用 RabbitMQ 实现订单定时取消</a></h2><h3 class=article-subtitle>使用 RabbitMQ 死信交换机实现订单定时取消，及使用延时队列插件优化实现</h3></div><footer class=article-time><div><svg class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>Jan 18, 2025</time></div></footer></div></header><section class=article-content><p>最近参与了字节跳动青训营寒假专场的后端方向，结营项目 &ldquo;抖音电商&rdquo; 订单服务中有一项定时取消订单的功能需求，在这里记录一些我的想法和 demo 实现。</p><h2 id=一前言>一、前言</h2><p>为了避免在用户在未确认(支付)的情况下一直占用商品库存，提高整体库存周转率，避免无效订单数据长时间驻留在缓存中，我们需要采用一些机制进行资源回收，在这里即为定时取消机制。我们为订单设置一个过期时间，当订单在过期时间内未确认支付时，自动取消订单释放库存。这一需求可以通过 RabbitMQ 消息队列实现。</p><h2 id=二实现方案>二、实现方案</h2><p>我们先梳理一下在用户创建订单后的整个流程：</p><p><img src=/p/order-scheduled-cancel-by-rabbitmq/img1.png width=838 height=1128 srcset="/p/order-scheduled-cancel-by-rabbitmq/img1_hu_495ee1b39f7948f.png 480w, /p/order-scheduled-cancel-by-rabbitmq/img1_hu_ccf9869a34e859a7.png 1024w" loading=lazy alt=Image1 class=gallery-image data-flex-grow=74 data-flex-basis=178px></p><p>我们需要实现的部分即：&ldquo;定时取消订单&rdquo; 子图部分，有如下两种实现方案：</p><h3 id=1-使用死信交换机配合死信队列实现>1) 使用死信交换机配合死信队列实现</h3><h4 id=一些介绍>一些介绍</h4><ol><li><p>死信交换机(DLX)</p><p>死信交换机即一个专门用于接收死信的交换机。当消息成为死信后，它们会被路由到指定的死信交换机。根据配置，交换机可以将这些死信消息路由到一个或多个死信队列中。</p><p><strong>工作流程</strong>：</p><ol><li>创建队列时配置交换机及相关属性参数。</li><li>当消息在正常队列中因为一些原因(消息过期；达到最大重试次数；队列限制)无法被消费时，被标记为死信。</li><li>标记的死信根据配置发送到设置的死信交换机。</li><li>死信交换机根据路由规则将死信发送到对应的死信队列。</li></ol></li><li><p>死信队列(DLQ)</p><p>死信队列即一个特殊的队列，用于存储那些不能被正常处理的消息(因为上文描述的原因标记为死信的消息)。</p></li></ol><h4 id=demo-实现>Demo 实现</h4><p>参照上文我们发现，过期的消息会被标记为死信发送到死信交换机，在轮转到死信队列。</p><p>那么我们不难想到这里的第一个方案：创建一个死信交换机，过期的消息被发送到死信交换机，然后创建一个死信队列，接收过期的死信，最后创建一个消费者，消费死信队列中的消息，即可实现定时取消订单的功能。</p><p>然后就是 Coding 实现想法了。</p><p>这里先使用 Docker Compose 搭建一个 RabbitMQ 环境，方便后续的测试：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-yaml data-lang=yaml><span class=line><span class=cl><span class=nt>version</span><span class=p>:</span><span class=w> </span><span class=s1>&#39;3&#39;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nt>services</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=nt>rabbitmq</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>image</span><span class=p>:</span><span class=w> </span><span class=l>rabbitmq:3-management</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>container_name</span><span class=p>:</span><span class=w> </span><span class=l>rabbitmq-test</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>ports</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>      </span>- <span class=s2>&#34;5672:5672&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>      </span>- <span class=s2>&#34;15672:15672&#34;</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>environment</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>      </span><span class=nt>RABBITMQ_DEFAULT_USER</span><span class=p>:</span><span class=w> </span><span class=l>finn</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>      </span><span class=nt>RABBITMQ_DEFAULT_PASS</span><span class=p>:</span><span class=w> </span><span class=l>finn</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>    </span><span class=nt>volumes</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>      </span>- <span class=l>rabbitmq_data:/var/lib/rabbitmq</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w></span><span class=nt>volumes</span><span class=p>:</span><span class=w>
+</span></span></span><span class=line><span class=cl><span class=w>  </span><span class=nt>rabbitmq_data</span><span class=p>:</span><span class=w>
+</span></span></span></code></pre></td></tr></table></div></div><p>首先定义以下订单结构，方便后续的模拟：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span> <span class=nx>Order</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>ID</span>        <span class=kt>string</span>    <span class=s>`json:&#34;id&#34;`</span>
+</span></span><span class=line><span class=cl>	<span class=nx>Status</span>    <span class=kt>string</span>    <span class=s>`json:&#34;status&#34;`</span>
+</span></span><span class=line><span class=cl>	<span class=nx>CreatedAt</span> <span class=nx>time</span><span class=p>.</span><span class=nx>Time</span> <span class=s>`json:&#34;created_at&#34;`</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>const</span> <span class=p>(</span>
+</span></span><span class=line><span class=cl>	<span class=nx>StatusPending</span> <span class=p>=</span> <span class=s>&#34;pending&#34;</span>
+</span></span><span class=line><span class=cl>	<span class=nx>StatusSuccess</span> <span class=p>=</span> <span class=s>&#34;success&#34;</span>
+</span></span><span class=line><span class=cl>	<span class=nx>StatusClosed</span>  <span class=p>=</span> <span class=s>&#34;closed&#34;</span>
+</span></span><span class=line><span class=cl><span class=p>)</span>
+</span></span></code></pre></td></tr></table></div></div><p>连接到 RabbitMQ：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=nx>conn</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>amqp</span><span class=p>.</span><span class=nf>Dial</span><span class=p>(</span><span class=s>&#34;amqp://finn:finn@localhost:5672/&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=c1>// ...</span>
+</span></span><span class=line><span class=cl><span class=k>defer</span> <span class=nx>conn</span><span class=p>.</span><span class=nf>Close</span><span class=p>()</span>
+</span></span><span class=line><span class=cl><span class=nx>ch</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>conn</span><span class=p>.</span><span class=nf>Channel</span><span class=p>()</span>
+</span></span><span class=line><span class=cl><span class=c1>//...</span>
+</span></span><span class=line><span class=cl><span class=k>defer</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>Close</span><span class=p>()</span>
+</span></span></code></pre></td></tr></table></div></div><p>然后按照流程创建交换机、队列：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span> <span class=nf>declareExchanges</span><span class=p>(</span><span class=nx>ch</span> <span class=o>*</span><span class=nx>amqp</span><span class=p>.</span><span class=nx>Channel</span><span class=p>)</span> <span class=kt>error</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=c1>// 声明普通交换机</span>
+</span></span><span class=line><span class=cl>	<span class=nx>err</span> <span class=o>:=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>ExchangeDeclare</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>		<span class=nx>normalExchange</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;direct&#34;</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>true</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>nil</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=c1>// ...</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=c1>// 声明延迟交换机</span>
+</span></span><span class=line><span class=cl>	<span class=nx>err</span> <span class=p>=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>ExchangeDeclare</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>		<span class=nx>delayExchange</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;direct&#34;</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>true</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>nil</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=c1>// ...</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=c1>// 声明死信交换机</span>
+</span></span><span class=line><span class=cl>	<span class=nx>err</span> <span class=p>=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>ExchangeDeclare</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>		<span class=nx>deadLetterExchange</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;direct&#34;</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>true</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>nil</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>err</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span><span class=lnt>62
+</span><span class=lnt>63
+</span><span class=lnt>64
+</span><span class=lnt>65
+</span><span class=lnt>66
+</span><span class=lnt>67
+</span><span class=lnt>68
+</span><span class=lnt>69
+</span><span class=lnt>70
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span> <span class=nf>declareQueues</span><span class=p>(</span><span class=nx>ch</span> <span class=o>*</span><span class=nx>amqp</span><span class=p>.</span><span class=nx>Channel</span><span class=p>)</span> <span class=kt>error</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=c1>// 声明普通队列</span>
+</span></span><span class=line><span class=cl>	<span class=nx>_</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>QueueDeclare</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>		<span class=nx>normalQueue</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>true</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>nil</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//...</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=c1>// 绑定普通队列</span>
+</span></span><span class=line><span class=cl>	<span class=nx>err</span> <span class=p>=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>QueueBind</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>		<span class=nx>normalQueue</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>normalKey</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>normalExchange</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>nil</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//...</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=c1>// 声明延迟队列</span>
+</span></span><span class=line><span class=cl>	<span class=nx>args</span> <span class=o>:=</span> <span class=nx>amqp</span><span class=p>.</span><span class=nx>Table</span><span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;x-dead-letter-exchange&#34;</span><span class=p>:</span>    <span class=nx>deadLetterExchange</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;x-dead-letter-routing-key&#34;</span><span class=p>:</span> <span class=nx>deadLetterKey</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;x-message-ttl&#34;</span><span class=p>:</span>             <span class=nb>int32</span><span class=p>(</span><span class=nx>orderTTL</span><span class=p>.</span><span class=nf>Milliseconds</span><span class=p>()),</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>_</span><span class=p>,</span> <span class=nx>err</span> <span class=p>=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>QueueDeclare</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>		<span class=nx>delayQueue</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>true</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>args</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//...</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=c1>// 绑定延迟队列</span>
+</span></span><span class=line><span class=cl>	<span class=nx>err</span> <span class=p>=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>QueueBind</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>		<span class=nx>delayQueue</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>delayKey</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>delayExchange</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>nil</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//...</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=c1>// 声明死信队列</span>
+</span></span><span class=line><span class=cl>	<span class=nx>_</span><span class=p>,</span> <span class=nx>err</span> <span class=p>=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>QueueDeclare</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>		<span class=nx>deadLetterQueue</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>true</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>nil</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//...</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=c1>// 绑定死信队列</span>
+</span></span><span class=line><span class=cl>	<span class=nx>err</span> <span class=p>=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>QueueBind</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>		<span class=nx>deadLetterQueue</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>deadLetterKey</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>deadLetterExchange</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>nil</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>err</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>最后即消费者的实现：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span><span class=lnt>62
+</span><span class=lnt>63
+</span><span class=lnt>64
+</span><span class=lnt>65
+</span><span class=lnt>66
+</span><span class=lnt>67
+</span><span class=lnt>68
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span> <span class=nf>consumeNormalQueue</span><span class=p>(</span><span class=nx>ch</span> <span class=o>*</span><span class=nx>amqp</span><span class=p>.</span><span class=nx>Channel</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>msgs</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>Consume</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>		<span class=nx>normalQueue</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;&#34;</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>nil</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//...</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=nx>msg</span> <span class=o>:=</span> <span class=k>range</span> <span class=nx>msgs</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=kd>var</span> <span class=nx>order</span> <span class=nx>Order</span>
+</span></span><span class=line><span class=cl>		<span class=nx>err</span> <span class=o>:=</span> <span class=nx>json</span><span class=p>.</span><span class=nf>Unmarshal</span><span class=p>(</span><span class=nx>msg</span><span class=p>.</span><span class=nx>Body</span><span class=p>,</span> <span class=o>&amp;</span><span class=nx>order</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=c1>//...</span>
+</span></span><span class=line><span class=cl>			<span class=nx>msg</span><span class=p>.</span><span class=nf>Ack</span><span class=p>(</span><span class=kc>false</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>			<span class=k>continue</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=c1>// 改变订单状态，这里随机模拟</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>rand</span><span class=p>.</span><span class=nf>Float32</span><span class=p>()</span> <span class=p>&lt;</span> <span class=mf>0.3</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=nx>order</span><span class=p>.</span><span class=nx>Status</span> <span class=p>=</span> <span class=nx>StatusSuccess</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>		
+</span></span><span class=line><span class=cl>		<span class=c1>//...</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=c1>// 轮转发送到延迟队列</span>
+</span></span><span class=line><span class=cl>		<span class=nx>ctx</span> <span class=o>:=</span> <span class=nx>context</span><span class=p>.</span><span class=nf>Background</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>		<span class=nf>publishOrder</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span> <span class=nx>ch</span><span class=p>,</span> <span class=nx>delayExchange</span><span class=p>,</span> <span class=nx>delayKey</span><span class=p>,</span> <span class=nx>order</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=nx>msg</span><span class=p>.</span><span class=nf>Ack</span><span class=p>(</span><span class=kc>false</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=nf>consumeDeadLetterQueue</span><span class=p>(</span><span class=nx>ch</span> <span class=o>*</span><span class=nx>amqp</span><span class=p>.</span><span class=nx>Channel</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>msgs</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>Consume</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>		<span class=nx>deadLetterQueue</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=s>&#34;&#34;</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=kc>nil</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=c1>//...</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=nx>msg</span> <span class=o>:=</span> <span class=k>range</span> <span class=nx>msgs</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=kd>var</span> <span class=nx>order</span> <span class=nx>Order</span>
+</span></span><span class=line><span class=cl>		<span class=nx>err</span> <span class=o>:=</span> <span class=nx>json</span><span class=p>.</span><span class=nf>Unmarshal</span><span class=p>(</span><span class=nx>msg</span><span class=p>.</span><span class=nx>Body</span><span class=p>,</span> <span class=o>&amp;</span><span class=nx>order</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=c1>//...</span>
+</span></span><span class=line><span class=cl>			<span class=nx>msg</span><span class=p>.</span><span class=nf>Ack</span><span class=p>(</span><span class=kc>false</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>			<span class=k>continue</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=c1>// 检查订单状态</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>order</span><span class=p>.</span><span class=nx>Status</span> <span class=o>==</span> <span class=nx>StatusPending</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=nx>order</span><span class=p>.</span><span class=nx>Status</span> <span class=p>=</span> <span class=nx>StatusClosed</span>
+</span></span><span class=line><span class=cl>			<span class=nx>log</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;Order %s timeout, status changed to %s&#34;</span><span class=p>,</span> <span class=nx>order</span><span class=p>.</span><span class=nx>ID</span><span class=p>,</span> <span class=nx>order</span><span class=p>.</span><span class=nx>Status</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=nx>log</span><span class=p>.</span><span class=nf>Printf</span><span class=p>(</span><span class=s>&#34;Order %s status is %s, no change needed&#34;</span><span class=p>,</span> <span class=nx>order</span><span class=p>.</span><span class=nx>ID</span><span class=p>,</span> <span class=nx>order</span><span class=p>.</span><span class=nx>Status</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=nx>msg</span><span class=p>.</span><span class=nf>Ack</span><span class=p>(</span><span class=kc>false</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>最后在主函数模拟用户创建订单即可完成整个流程：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// 模拟创建订单</span>
+</span></span><span class=line><span class=cl><span class=nx>ctx</span> <span class=o>:=</span> <span class=nx>context</span><span class=p>.</span><span class=nf>Background</span><span class=p>()</span>
+</span></span><span class=line><span class=cl><span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>1</span><span class=p>;</span> <span class=nx>i</span> <span class=o>&lt;=</span> <span class=mi>5</span><span class=p>;</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nx>order</span> <span class=o>:=</span> <span class=nx>Order</span><span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=nx>ID</span><span class=p>:</span>        <span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;ORDER_%d&#34;</span><span class=p>,</span> <span class=nx>i</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>        <span class=nx>Status</span><span class=p>:</span>    <span class=nx>StatusPending</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>        <span class=nx>CreatedAt</span><span class=p>:</span> <span class=nx>time</span><span class=p>.</span><span class=nf>Now</span><span class=p>(),</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=c1>// 发送到普通队列</span>
+</span></span><span class=line><span class=cl>    <span class=nf>publishOrder</span><span class=p>(</span><span class=nx>ctx</span><span class=p>,</span> <span class=nx>ch</span><span class=p>,</span> <span class=nx>normalExchange</span><span class=p>,</span> <span class=nx>normalKey</span><span class=p>,</span> <span class=nx>order</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>    <span class=nx>time</span><span class=p>.</span><span class=nf>Sleep</span><span class=p>(</span><span class=mi>2</span> <span class=o>*</span> <span class=nx>time</span><span class=p>.</span><span class=nx>Second</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1>// 启动消费者</span>
+</span></span><span class=line><span class=cl><span class=nx>forever</span> <span class=o>:=</span> <span class=nb>make</span><span class=p>(</span><span class=kd>chan</span> <span class=kd>struct</span><span class=p>{})</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=k>go</span> <span class=nf>consumeNormalQueue</span><span class=p>(</span><span class=nx>ch</span><span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=k>go</span> <span class=nf>consumeDeadLetterQueue</span><span class=p>(</span><span class=nx>ch</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=o>&lt;-</span><span class=nx>forever</span>
+</span></span></code></pre></td></tr></table></div></div><p>其中省略了一些不关键的错误处理和日志输出，最终效果如下：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-plaintext data-lang=plaintext><span class=line><span class=cl>2025/01/19 16:51:06 Order ORDER_1 timeout, status changed to closed
+</span></span><span class=line><span class=cl>2025/01/19 16:51:06 Order ORDER_2 status is success, no change needed
+</span></span><span class=line><span class=cl>2025/01/19 16:51:06 Order ORDER_3 status is success, no change needed
+</span></span><span class=line><span class=cl>2025/01/19 16:51:06 Order ORDER_4 status is success, no change needed
+</span></span><span class=line><span class=cl>2025/01/19 16:51:06 Order ORDER_5 status is success, no change needed
+</span></span></code></pre></td></tr></table></div></div><p>可以看到，订单在过期时间内未确认支付时，自动取消订单确实已经完成。</p><p>但是我们继续考虑这种实现可能会导致的问题：</p><ol><li>当订单满足超时条件需要取消时，我们需要轮转消息到死信队列，之后在死信队列中重新处理，这可能会造成延迟，导致实际取消时间超出预设的时间。</li><li>大量订单消息轮转到死信队列中，造成消息积压，可能导致负载增加，系统性能下降。</li><li>业务逻辑肉眼可见的变得复杂，不易于维护。</li></ol><p>显然需要进行一些优化，这里引出我们的第二种实现方案：</p><h3 id=2-使用延时队列插件实现>2) 使用延时队列插件实现</h3><p>RabbitMQ 提供了一个延时队列插件 <code>rabbitmq_delayed_message_exchange</code>。我们可以依赖这个插件实现定时取消。</p><h4 id=一些介绍-1>一些介绍</h4><p><strong>延迟消息交换机</strong>是一种特殊的交换机，允许用户将消息在指定的时间延迟后再发送到目标队列。这种机制适用于需要在未来某个时刻处理的消息场景，例如定时任务、延迟通知等。</p><p><strong>工作流程</strong>：</p><ol><li>创建延迟消息交换机时，指定其类型为 x-delayed-message，并设置所需的参数。</li><li>发布消息时，可以在消息的属性中设置延迟时间（以毫秒为单位）。</li><li>消息在指定的延迟时间后，交换机会将其路由到相应的目标队列。</li><li>消费者从目标队列中获取到延迟后的消息进行处理。</li></ol><h4 id=demo-实现-1>Demo 实现</h4><p>我们首先在之前开启的 RabbitMQ 服务中引入这个插件：</p><ol><li><p>下载插件：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>mkdir -p ~/rabbitmq/plugins <span class=o>&amp;&amp;</span> wget -P ~/rabbitmq/plugins https://github.com/rabbitmq/rabbitmq-delayed-message-exchange/releases/download/v3.13.0/rabbitmq_delayed_message_exchange-3.13.0.ez
+</span></span></code></pre></td></tr></table></div></div></li><li><p>Copy 到容器：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>sudo docker cp ~/rabbitmq/plugins/rabbitmq_delayed_message_exchange-3.13.0.ez rabbitmq-test:/plugins
+</span></span></code></pre></td></tr></table></div></div></li><li><p>启动插件：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>sudo docker <span class=nb>exec</span> -it rabbitmq-test rabbitmq-plugins <span class=nb>enable</span> rabbitmq_delayed_message_exchange
+</span></span></code></pre></td></tr></table></div></div></li><li><p>重启服务：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-bash data-lang=bash><span class=line><span class=cl>sudo docker restart rabbitmq-test
+</span></span></code></pre></td></tr></table></div></div></li></ol><p>然后开始调整一下代码实现：</p><p>只需要修改一下创建队列和交换机的部分即可，其他部分不变：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// 声明普通交换机</span>
+</span></span><span class=line><span class=cl><span class=nx>err</span> <span class=o>:=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>ExchangeDeclare</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>	<span class=nx>normalExchange</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=s>&#34;direct&#34;</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>true</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>nil</span><span class=p>,</span> 
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=c1>// 声明延时交换机（使用 delayed-message-exchange 插件）</span>
+</span></span><span class=line><span class=cl><span class=nx>args</span> <span class=o>:=</span> <span class=nx>amqp</span><span class=p>.</span><span class=nx>Table</span><span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=s>&#34;x-delayed-type&#34;</span><span class=p>:</span> <span class=s>&#34;direct&#34;</span><span class=p>,</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=nx>err</span> <span class=p>=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>ExchangeDeclare</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>	<span class=nx>delayedExchange</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=s>&#34;x-delayed-message&#34;</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>true</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=nx>args</span><span class=p>,</span> 
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=c1>// 声明普通队列</span>
+</span></span><span class=line><span class=cl><span class=nx>_</span><span class=p>,</span> <span class=nx>err</span> <span class=p>=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>QueueDeclare</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>	<span class=nx>normalQueue</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>true</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>nil</span><span class=p>,</span> 
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=c1>// 绑定普通队列</span>
+</span></span><span class=line><span class=cl><span class=nx>err</span> <span class=p>=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>QueueBind</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>	<span class=nx>normalQueue</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=nx>normalKey</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=nx>normalExchange</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>nil</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=c1>// 声明延时队列</span>
+</span></span><span class=line><span class=cl><span class=nx>_</span><span class=p>,</span> <span class=nx>err</span> <span class=p>=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>QueueDeclare</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>	<span class=nx>delayedQueue</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>true</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>nil</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span><span class=line><span class=cl><span class=c1>// 绑定延时队列</span>
+</span></span><span class=line><span class=cl><span class=nx>err</span> <span class=p>=</span> <span class=nx>ch</span><span class=p>.</span><span class=nf>QueueBind</span><span class=p>(</span>
+</span></span><span class=line><span class=cl>	<span class=nx>delayedQueue</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=nx>delayedKey</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=nx>delayedExchange</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>false</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=kc>nil</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>	<span class=p>)</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=三总结>三、总结</h2><div class=table-wrapper><table><thead><tr><th>比较项</th><th><code>rabbitmq_delayed_message_exchange</code></th><th>死信队列和死信交换机</th></tr></thead><tbody><tr><td><strong>超时取消延迟</strong></td><td>无需轮转消息，直接在预设时间后处理，避免延迟，精准控制取消时间</td><td>需要轮转到死信队列，处理延迟可能导致实际取消时间超出预设时间</td></tr><tr><td><strong>消息积压</strong></td><td>消息在延迟交换机中处理，避免积压，系统性能更稳定</td><td>大量订单消息轮转到死信队列，可能导致消息积压，增加系统负载，影响性能</td></tr><tr><td><strong>业务逻辑复杂性</strong></td><td>逻辑简单，易于理解和维护，直观的延迟处理机制</td><td>业务逻辑复杂，需处理死信队列重试和转发，增加维护成本和复杂度</td></tr><tr><td><strong>系统性能</strong></td><td>高效处理，减少资源消耗，优化整体性能</td><td>可能因消息积压导致系统性能下降，影响其他业务流程</td></tr><tr><td><strong>配置和管理</strong></td><td>配置简单，无需额外设置死信队列，减少管理负担</td><td>需要配置和管理死信队列及交换机，增加运维复杂度</td></tr><tr><td><strong>灵活性</strong></td><td>可以灵活设置不同的延迟时间，适应多种业务场景</td><td>灵活性有限，重试逻辑和延迟处理需要额外设计</td></tr></tbody></table></div></section><footer class=article-footer><section class=article-tags><a href=/tags/%E5%AD%97%E8%8A%82%E9%9D%92%E8%AE%AD%E8%90%A5/>字节青训营</a>
+<a href=/tags/golang/>Golang</a>
+<a href=/tags/rabbitmq/>RabbitMQ</a></section><section class=article-copyright><svg class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css integrity=sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js integrity=sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js integrity=sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05 crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{const e=document.querySelector(".main-article");renderMathInElement(e,{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}],ignoredClasses:["gist"]})})</script></article><link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css><div id=vssue></div><script src=https://unpkg.com/vue@2/dist/vue.runtime.min.js></script><script src=https://unpkg.com/vssue/dist/vssue.github.min.js></script><script>new Vue({el:"#vssue",render:e=>e("Vssue",{props:{title:"字节青训营 - [抖音电商项目] 使用 RabbitMQ 实现订单定时取消",options:{autoCreateIssue:!0,owner:"FinnTew",repo:"blog-comments",clientId:"Ov23liKS3gJoM4gkl7fL",clientSecret:"1f652d3a84fa45475ff7ffe25e89dc72cf9434af"}}})})</script><footer class=site-footer><section class=copyright>&copy;
+2024 -
+2025 FinnTew's Blog</section><section class=powerby>使用 <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> 构建<br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.30.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css crossorigin=anonymous></main></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z+KMkF24hUW8WePSA9HM=" crossorigin=anonymous></script><script type=text/javascript src=/ts/main.1e9a3bafd846ced4c345d084b355fb8c7bae75701c338f8a1f8a82c780137826.js defer></script><script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>

@@ -1,0 +1,481 @@
+<!doctype html><html lang=en dir=ltr><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><meta name=description content="FincasKV 存储层相关的一些记录，包括 Bitcask 及其从内存索引，内存缓存，写入等方面的优化。"><title>FincasKV - 存储层设计与实现</title>
+<link rel=canonical href=https://finntew.github.io/p/fincas-kv-storage-design-and-impl/><link rel=stylesheet href=/scss/style.min.663803bebe609202d5b39d848f2d7c2dc8b598a2d879efa079fa88893d29c49c.css><meta property='og:title' content="FincasKV - 存储层设计与实现"><meta property='og:description' content="FincasKV 存储层相关的一些记录，包括 Bitcask 及其从内存索引，内存缓存，写入等方面的优化。"><meta property='og:url' content='https://finntew.github.io/p/fincas-kv-storage-design-and-impl/'><meta property='og:site_name' content="FinnTew's Blog"><meta property='og:type' content='article'><meta property='article:section' content='Post'><meta property='article:tag' content='Golang'><meta property='article:tag' content='FincasKV'><meta property='article:tag' content='Bitcask'><meta property='article:tag' content='KV Storage'><meta property='article:published_time' content='2025-02-10T19:58:06+08:00'><meta property='article:modified_time' content='2025-02-10T19:58:06+08:00'><meta name=twitter:title content="FincasKV - 存储层设计与实现"><meta name=twitter:description content="FincasKV 存储层相关的一些记录，包括 Bitcask 及其从内存索引，内存缓存，写入等方面的优化。"><link rel="shortcut icon" href=/favicon.png></head><body class=article-page><script>(function(){const e="StackColorScheme";localStorage.getItem(e)||localStorage.setItem(e,"auto")})()</script><script>(function(){const t="StackColorScheme",e=localStorage.getItem(t),n=window.matchMedia("(prefers-color-scheme: dark)").matches===!0;e=="dark"||e==="auto"&&n?document.documentElement.dataset.scheme="dark":document.documentElement.dataset.scheme="light"})()</script><div class="container main-container flex on-phone--column extended"><aside class="sidebar left-sidebar sticky"><button class="hamburger hamburger--spin" type=button id=toggle-menu aria-label=切换菜单>
+<span class=hamburger-box><span class=hamburger-inner></span></span></button><header><figure class=site-avatar><a href=/><img src=/img/avatar_hu_d919a87470c417cb.png width=300 height=300 class=site-logo loading=lazy alt=Avatar>
+</a><span class=emoji>💤</span></figure><div class=site-meta><h1 class=site-name><a href=/>FinnTew's Blog</a></h1><h2 class=site-description>Energy = Milk x Coffee²</h2></div></header><ol class=menu id=main-menu><li><a href=/><svg class="icon icon-tabler icon-tabler-home" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><polyline points="5 12 3 12 12 3 21 12 19 12"/><path d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/><path d="M9 21v-6a2 2 0 012-2h2a2 2 0 012 2v6"/></svg>
+<span>Home</span></a></li><li><a href=/archives/><svg class="icon icon-tabler icon-tabler-archive" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><rect x="3" y="4" width="18" height="4" rx="2"/><path d="M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+<span>Archives</span></a></li><li><a href=/search/><svg class="icon icon-tabler icon-tabler-search" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="10" cy="10" r="7"/><line x1="21" y1="21" x2="15" y2="15"/></svg>
+<span>Search</span></a></li><li class=menu-bottom-section><ol class=menu><li id=dark-mode-toggle><svg class="icon icon-tabler icon-tabler-toggle-left" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="8" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<svg class="icon icon-tabler icon-tabler-toggle-right" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="16" cy="12" r="2"/><rect x="2" y="6" width="20" height="12" rx="6"/></svg>
+<span>暗色模式</span></li></ol></li></ol></aside><aside class="sidebar right-sidebar sticky"><section class="widget archives"><div class=widget-icon><svg class="icon icon-tabler icon-tabler-hash" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><line x1="5" y1="9" x2="19" y2="9"/><line x1="5" y1="15" x2="19" y2="15"/><line x1="11" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="13" y2="20"/></svg></div><h2 class="widget-title section-title">目录</h2><div class=widget--toc><nav id=TableOfContents><ol><li><a href=#闲言碎语>闲言碎语</a></li><li><a href=#bitcask>Bitcask</a><ol><li><a href=#数据文件datafile>数据文件(DataFile)</a></li><li><a href=#内存索引>内存索引</a></li><li><a href=#put-get-del>Put, Get, Del</a></li><li><a href=#merge>Merge</a></li></ol></li><li><a href=#filemanager---asyncwrite>FileManager - AsyncWrite</a></li><li><a href=#multi-type-shard-memindex>Multi-Type Shard MemIndex</a></li><li><a href=#lrucache--bloomfilter>LRUCache & BloomFilter</a></li></ol></nav></div></section></aside><main class="main full-width"><article class=main-article><header class=article-header><div class=article-details><div class=article-title-wrapper><h2 class=article-title><a href=/p/fincas-kv-storage-design-and-impl/>FincasKV - 存储层设计与实现</a></h2><h3 class=article-subtitle>FincasKV 存储层相关的一些记录，包括 Bitcask 及其从内存索引，内存缓存，写入等方面的优化。</h3></div><footer class=article-time><div><svg class="icon icon-tabler icon-tabler-calendar-time" width="56" height="56" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><path d="M11.795 21H5a2 2 0 01-2-2V7a2 2 0 012-2h12a2 2 0 012 2v4"/><circle cx="18" cy="18" r="4"/><path d="M15 3v4"/><path d="M7 3v4"/><path d="M3 11h16"/><path d="M18 16.496V18l1 1"/></svg>
+<time class=article-time--published>Feb 10, 2025</time></div></footer></div></header><section class=article-content><h2 id=闲言碎语>闲言碎语</h2><p>在去年写我的第一版简历的时候做过一个项目 FinnKV，一个基于 Bitcask 存储模型实现的 KV 存储，当时做的比较简陋，不出意外的，在投递过程中反馈也比较差，于是趁着这个寒假的时间重构了一下项目，引入了一些新的内容，在此做一些记录。</p><p>重构后的项目命名为 FincasKV，一个基于 Bitcask 存储模型的分布式 KV 存储。</p><p>仓库地址：<a class=link href=https://github.com/FinnTew/FincasKV target=_blank rel=noopener>FincasKV</a></p><h2 id=bitcask>Bitcask</h2><p>Bitcask 是一种高效的键值存储模型，采用类 LSM 结构。本质上 Bitcask 就是一个具有固定结构、支持内存索引，Append Only 的日志文件目录。通过内存索引中保存的键到Offset的映射相关的信息，实现高效查找。</p><h3 id=数据文件datafile>数据文件(DataFile)</h3><p>如上所述，每个 DataFile 都是一个 Append Only 的日志文件，用于保存键值对极其相关的元信息，其中每条日志(Record)呈如下结构：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span> <span class=nx>KVItem</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>Key</span>   <span class=p>[]</span><span class=kt>byte</span>
+</span></span><span class=line><span class=cl>	<span class=nx>Value</span> <span class=p>[]</span><span class=kt>byte</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>type</span> <span class=nx>Record</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>Timestamp</span> <span class=kt>int64</span>
+</span></span><span class=line><span class=cl>	<span class=nx>Checksum</span>  <span class=kt>uint64</span>
+</span></span><span class=line><span class=cl>	<span class=nx>Flags</span>     <span class=kt>uint32</span>
+</span></span><span class=line><span class=cl>	<span class=nx>KVItem</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>实际写入时还应该存储 CRC 校验和，用于校验数据的完整性。不难想到 CRC 是在 Record 构建完整后进行写入操作时计算，以及在读出时确认位置后读取 KV 前校验，所以 Record 中并不需要添加 CRC 字段。</p><p>一个 Bitcask 实例包含多个 DataFile，但只有一个为 Active DataFile，且仅有 Active DataFile 可变，允许追加写入操作，其与的 Old DataFile 不可变，只允许读操作。</p><p>在当前 Active DataFile 的大小到达阈值的时候，我们需要将其关闭，并创建新的日志文件作为 Active DataFile。</p><p>还有一种会轮转 Active DataFile 的情况，在 Bitcask 中，我们认为，只要日志文件被关闭了，无论是否主动关闭，我们都将其视为 Old DataFile，永远不再 Reopen 允许写入操作。</p><h3 id=内存索引>内存索引</h3><p>前面提到过 Bitcask 内存索引存储了键到 Offset 的映射信息，用于快速查找。每条索引称为一个 Entry，结构如下：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span> <span class=nx>Entry</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>FileID</span>    <span class=kt>int</span>
+</span></span><span class=line><span class=cl>	<span class=nx>Offset</span>    <span class=kt>int64</span>
+</span></span><span class=line><span class=cl>	<span class=nx>Size</span>      <span class=kt>uint32</span>
+</span></span><span class=line><span class=cl>	<span class=nx>Timestamp</span> <span class=kt>int64</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h3 id=put-get-del>Put, Get, Del</h3><p>Bitcask 中所有的写操作都以追加日志的方式进行，但是显然新增/修改和删除操作实际上并不相同，所以我们需要一种区分二者的方式。论文中提到对于删除操作使用墓碑机制。</p><p>注意到 Record 中已经有 Flag 字段，我们还需定义如下两种状态标记：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>const</span> <span class=p>(</span>
+</span></span><span class=line><span class=cl>	<span class=nx>FlagNormal</span> <span class=kt>uint32</span> <span class=p>=</span> <span class=kc>iota</span> <span class=c1>// 表示新增或者修改操作，这里二者并不需要区分，读取时取最近一条即可</span>
+</span></span><span class=line><span class=cl>	<span class=nx>FlagDeleted</span> <span class=c1>// 表示删除操作</span>
+</span></span><span class=line><span class=cl><span class=p>)</span>
+</span></span></code></pre></td></tr></table></div></div><p>处理完以上问题后，Put 和 Del 的逻辑就显而易见了：</p><ul><li>Put：构建 Record，设置 Flag 为 FlagNormal，追加写入 Active DataFile，新增/更新对应键的内存索引。</li><li>Del：构建 Record，设置 Flag 为 FlagDeleted，追加写入 Active DataFile，删除对应键的内存索引。</li></ul><p>而对于 Get，我们参考 Entry 结构，不难发现流程如下：</p><ol><li>通过键获取对应的 Entry。</li><li>通过 Entry 中的 FileID 确定目标 DataFile。</li><li>假设整个文件为 data[:]，那么我们只需要读出 data[Entry.Offset:Entry.Offset + Entry.Size] 即为需要的 Record。</li><li>不难算出 HeaderSize = timestamp(8) + flags(4) + keyLen(4) + valueLen(4) = 20 bytes，而 CRC 校验和为 8 bytes，所以 Record 实际大小为 28 bytes + len(Key) + len(Value)。</li><li>DataFile 中每条 Record 按照 &ldquo;Header | Key | Value | CRC&rdquo; 这样存储，所以我们读出 data[Entry.Offset + HeaderSize:Entry.Offset + Entry.Size - 8] 即为 &ldquo;Key | Value&rdquo;。</li></ol><h3 id=merge>Merge</h3><p>到这里，Merge 操作就很容易了，论文指出 Merge 即为遍历所有有效键值对，将其写入到新的 DataFile 中，全部完成后删除原本的 DataFile。</p><p>有效键值对在这里即为当前内存缓存中的键对应的键值对，此时 Merge 的流程已经很清晰了：</p><ol><li>创建 MergeDir，在其中创建新的 Active DataFile。</li><li>遍历内存索引的键，依次 Get，并构建新的 Record 写入 MergeDir 中的 Active DataFile。</li><li>全部完成后，删除 DataDir，将 MergeDir 重命名作为新的 DataDir。</li></ol><hr><p>至此，基本的 Bitcask 模型已经实现了，下面我们考虑一些优化。</p><h2 id=filemanager---asyncwrite>FileManager - AsyncWrite</h2><p>Bitcask 是一个依赖文件系统的存储模型，那我们首先可以想到，对写入操作进行优化，也就是这里提到的异步写。</p><p>在此之前我先对现有的代码结构进行了一些调整，注意到对于文件的操作可以解耦，所以我将 rotate, Write, Read, Sync 以及 Encode/Decode 这些操作解耦出来，实现了一个 FileManager，方便之后优化改进。</p><p>然后是异步写的实现，我们知道，Golang 的并发原语是非常强大的，我们可以依据此很轻松的将写入操作进行异步化。</p><p>首先定义对应的结构：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span><span class=lnt>9
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span> <span class=nx>AsyncWriteReq</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>DataByte</span> <span class=p>[]</span><span class=kt>byte</span>
+</span></span><span class=line><span class=cl>	<span class=nx>Resp</span>     <span class=kd>chan</span> <span class=nx>AsyncWriteResp</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=kd>type</span> <span class=nx>AsyncWriteResp</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>Entry</span> <span class=nx>storage2</span><span class=p>.</span><span class=nx>Entry</span>
+</span></span><span class=line><span class=cl>	<span class=nx>Err</span>   <span class=kt>error</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>然后是实现：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span><span class=lnt>32
+</span><span class=lnt>33
+</span><span class=lnt>34
+</span><span class=lnt>35
+</span><span class=lnt>36
+</span><span class=lnt>37
+</span><span class=lnt>38
+</span><span class=lnt>39
+</span><span class=lnt>40
+</span><span class=lnt>41
+</span><span class=lnt>42
+</span><span class=lnt>43
+</span><span class=lnt>44
+</span><span class=lnt>45
+</span><span class=lnt>46
+</span><span class=lnt>47
+</span><span class=lnt>48
+</span><span class=lnt>49
+</span><span class=lnt>50
+</span><span class=lnt>51
+</span><span class=lnt>52
+</span><span class=lnt>53
+</span><span class=lnt>54
+</span><span class=lnt>55
+</span><span class=lnt>56
+</span><span class=lnt>57
+</span><span class=lnt>58
+</span><span class=lnt>59
+</span><span class=lnt>60
+</span><span class=lnt>61
+</span><span class=lnt>62
+</span><span class=lnt>63
+</span><span class=lnt>64
+</span><span class=lnt>65
+</span><span class=lnt>66
+</span><span class=lnt>67
+</span><span class=lnt>68
+</span><span class=lnt>69
+</span><span class=lnt>70
+</span><span class=lnt>71
+</span><span class=lnt>72
+</span><span class=lnt>73
+</span><span class=lnt>74
+</span><span class=lnt>75
+</span><span class=lnt>76
+</span><span class=lnt>77
+</span><span class=lnt>78
+</span><span class=lnt>79
+</span><span class=lnt>80
+</span><span class=lnt>81
+</span><span class=lnt>82
+</span><span class=lnt>83
+</span><span class=lnt>84
+</span><span class=lnt>85
+</span><span class=lnt>86
+</span><span class=lnt>87
+</span><span class=lnt>88
+</span><span class=lnt>89
+</span><span class=lnt>90
+</span><span class=lnt>91
+</span><span class=lnt>92
+</span><span class=lnt>93
+</span><span class=lnt>94
+</span><span class=lnt>95
+</span><span class=lnt>96
+</span><span class=lnt>97
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>fm</span> <span class=o>*</span><span class=nx>FileManager</span><span class=p>)</span> <span class=nf>WriteAsync</span><span class=p>(</span><span class=nx>r</span> <span class=o>*</span><span class=nx>storage2</span><span class=p>.</span><span class=nx>Record</span><span class=p>)</span> <span class=o>&lt;-</span><span class=kd>chan</span> <span class=nx>AsyncWriteResp</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>result</span> <span class=o>:=</span> <span class=nb>make</span><span class=p>(</span><span class=kd>chan</span> <span class=nx>AsyncWriteResp</span><span class=p>,</span> <span class=mi>1</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=c1>// 编码成二进制</span>
+</span></span><span class=line><span class=cl>	<span class=nx>data</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nf>encodeRecord</span><span class=p>(</span><span class=nx>r</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=c1>// 如果编码失败，直接返回错误</span>
+</span></span><span class=line><span class=cl>		<span class=k>go</span> <span class=kd>func</span><span class=p>()</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=nx>result</span> <span class=o>&lt;-</span> <span class=nx>AsyncWriteResp</span><span class=p>{</span><span class=nx>Err</span><span class=p>:</span> <span class=nx>err</span><span class=p>}</span>
+</span></span><span class=line><span class=cl>			<span class=nb>close</span><span class=p>(</span><span class=nx>result</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=p>}()</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>result</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>req</span> <span class=o>:=</span> <span class=nx>AsyncWriteReq</span><span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>DataByte</span><span class=p>:</span> <span class=nx>data</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>		<span class=nx>Resp</span><span class=p>:</span>     <span class=nb>make</span><span class=p>(</span><span class=kd>chan</span> <span class=nx>AsyncWriteResp</span><span class=p>,</span> <span class=mi>1</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>select</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>case</span> <span class=nx>fm</span><span class=p>.</span><span class=nx>writeChan</span> <span class=o>&lt;-</span> <span class=nx>req</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>		<span class=c1>// 异步读出写结果再转发</span>
+</span></span><span class=line><span class=cl>		<span class=k>go</span> <span class=kd>func</span><span class=p>()</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=nx>res</span> <span class=o>:=</span> <span class=o>&lt;-</span><span class=nx>req</span><span class=p>.</span><span class=nx>Resp</span>
+</span></span><span class=line><span class=cl>			<span class=nx>result</span> <span class=o>&lt;-</span> <span class=nx>res</span>
+</span></span><span class=line><span class=cl>			<span class=nb>close</span><span class=p>(</span><span class=nx>result</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=p>}()</span>
+</span></span><span class=line><span class=cl>	<span class=k>case</span> <span class=o>&lt;-</span><span class=nx>fm</span><span class=p>.</span><span class=nx>stopChan</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>		<span class=c1>// 如果已经关闭，则立即返回错误</span>
+</span></span><span class=line><span class=cl>		<span class=k>go</span> <span class=kd>func</span><span class=p>()</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=nx>result</span> <span class=o>&lt;-</span> <span class=nx>AsyncWriteResp</span><span class=p>{</span><span class=nx>Err</span><span class=p>:</span> <span class=nx>err_def</span><span class=p>.</span><span class=nx>ErrDBClosed</span><span class=p>}</span>
+</span></span><span class=line><span class=cl>			<span class=nb>close</span><span class=p>(</span><span class=nx>result</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=p>}()</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>result</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1>// processWrites 消费 fm.writeChan，执行实际写入</span>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>fm</span> <span class=o>*</span><span class=nx>FileManager</span><span class=p>)</span> <span class=nf>processWrites</span><span class=p>()</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>defer</span> <span class=nx>fm</span><span class=p>.</span><span class=nx>wg</span><span class=p>.</span><span class=nf>Done</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>select</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>case</span> <span class=nx>req</span><span class=p>,</span> <span class=nx>ok</span> <span class=o>:=</span> <span class=o>&lt;-</span><span class=nx>fm</span><span class=p>.</span><span class=nx>writeChan</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>			<span class=k>if</span> <span class=p>!</span><span class=nx>ok</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>				<span class=k>return</span>
+</span></span><span class=line><span class=cl>			<span class=p>}</span>
+</span></span><span class=line><span class=cl>			<span class=nx>entry</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>fm</span><span class=p>.</span><span class=nf>syncWrite</span><span class=p>(</span><span class=nx>req</span><span class=p>.</span><span class=nx>DataByte</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>			<span class=nx>req</span><span class=p>.</span><span class=nx>Resp</span> <span class=o>&lt;-</span> <span class=nx>AsyncWriteResp</span><span class=p>{</span><span class=nx>Entry</span><span class=p>:</span> <span class=nx>entry</span><span class=p>,</span> <span class=nx>Err</span><span class=p>:</span> <span class=nx>err</span><span class=p>}</span>
+</span></span><span class=line><span class=cl>			<span class=nb>close</span><span class=p>(</span><span class=nx>req</span><span class=p>.</span><span class=nx>Resp</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=k>case</span> <span class=o>&lt;-</span><span class=nx>fm</span><span class=p>.</span><span class=nx>stopChan</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>			<span class=k>return</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl><span class=c1>// syncWrite 内部真正执行写入的函数</span>
+</span></span><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>fm</span> <span class=o>*</span><span class=nx>FileManager</span><span class=p>)</span> <span class=nf>syncWrite</span><span class=p>(</span><span class=nx>data</span> <span class=p>[]</span><span class=kt>byte</span><span class=p>)</span> <span class=p>(</span><span class=nx>storage2</span><span class=p>.</span><span class=nx>Entry</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>current</span> <span class=o>:=</span> <span class=nx>fm</span><span class=p>.</span><span class=nf>GetActiveFile</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>current</span> <span class=o>==</span> <span class=kc>nil</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>current</span><span class=p>.</span><span class=nx>Closed</span><span class=p>.</span><span class=nf>Load</span><span class=p>()</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=c1>// 已关闭，进行轮转</span>
+</span></span><span class=line><span class=cl>			<span class=nx>_</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>fm</span><span class=p>.</span><span class=nf>rotateFile</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>			<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>			<span class=k>continue</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=c1>// 检查剩余空间，如果不够则轮转</span>
+</span></span><span class=line><span class=cl>		<span class=nx>offsetNow</span> <span class=o>:=</span> <span class=nx>current</span><span class=p>.</span><span class=nx>Offset</span><span class=p>.</span><span class=nf>Load</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>offsetNow</span><span class=o>+</span><span class=nb>int64</span><span class=p>(</span><span class=nb>len</span><span class=p>(</span><span class=nx>data</span><span class=p>))</span> <span class=p>&gt;</span> <span class=nx>fm</span><span class=p>.</span><span class=nx>maxFileSize</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=nx>_</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>fm</span><span class=p>.</span><span class=nf>rotateFile</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>			<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>			<span class=k>continue</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=c1>// 计算写入起始位置</span>
+</span></span><span class=line><span class=cl>		<span class=nx>newOffset</span> <span class=o>:=</span> <span class=nx>current</span><span class=p>.</span><span class=nx>Offset</span><span class=p>.</span><span class=nf>Add</span><span class=p>(</span><span class=nb>int64</span><span class=p>(</span><span class=nb>len</span><span class=p>(</span><span class=nx>data</span><span class=p>)))</span>
+</span></span><span class=line><span class=cl>		<span class=nx>writePos</span> <span class=o>:=</span> <span class=nx>newOffset</span> <span class=o>-</span> <span class=nb>int64</span><span class=p>(</span><span class=nb>len</span><span class=p>(</span><span class=nx>data</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=c1>// 执行写入</span>
+</span></span><span class=line><span class=cl>		<span class=nx>n</span><span class=p>,</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>current</span><span class=p>.</span><span class=nx>File</span><span class=p>.</span><span class=nf>WriteAt</span><span class=p>(</span><span class=nx>data</span><span class=p>,</span> <span class=nx>writePos</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=k>if</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=o>||</span> <span class=nx>n</span> <span class=o>!=</span> <span class=nb>len</span><span class=p>(</span><span class=nx>data</span><span class=p>)</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=c1>// 写失败，则关闭当前文件并轮转</span>
+</span></span><span class=line><span class=cl>			<span class=nx>_</span> <span class=p>=</span> <span class=nx>current</span><span class=p>.</span><span class=nx>File</span><span class=p>.</span><span class=nf>Close</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>			<span class=nx>current</span><span class=p>.</span><span class=nx>Closed</span><span class=p>.</span><span class=nf>Store</span><span class=p>(</span><span class=kc>true</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>			<span class=nx>_</span><span class=p>,</span> <span class=nx>rotateErr</span> <span class=o>:=</span> <span class=nx>fm</span><span class=p>.</span><span class=nf>rotateFile</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>			<span class=k>if</span> <span class=nx>rotateErr</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>			<span class=k>return</span> <span class=nx>storage2</span><span class=p>.</span><span class=nx>Entry</span><span class=p>{},</span> <span class=nx>err_def</span><span class=p>.</span><span class=nx>ErrWriteFailed</span>
+</span></span><span class=line><span class=cl>		<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>		<span class=c1>// 写成功，返回对应的索引信息</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>storage2</span><span class=p>.</span><span class=nx>Entry</span><span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=o>...</span>
+</span></span><span class=line><span class=cl>		<span class=p>},</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>如上，我们通过 writeChan 进行异步写，然后在 processWrites 中消费 writeChan，将实际写操作异步延迟到 syncWrite 中执行。</p><p>在写入 writeChan 成功时直接返回结果，避免了阻塞等待，有效提高效率。</p><h2 id=multi-type-shard-memindex>Multi-Type Shard MemIndex</h2><p>首先规定我们所有的内存索引数据结构需要满足以下接口定义：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span> <span class=nx>MemIndex</span><span class=p>[</span><span class=nx>KeyType</span> <span class=nx>comparable</span><span class=p>,</span> <span class=nx>ValueType</span> <span class=kt>any</span><span class=p>]</span> <span class=kd>interface</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nf>Put</span><span class=p>(</span><span class=nx>key</span> <span class=nx>KeyType</span><span class=p>,</span> <span class=nx>value</span> <span class=nx>ValueType</span><span class=p>)</span> <span class=kt>error</span>
+</span></span><span class=line><span class=cl>	<span class=nf>Get</span><span class=p>(</span><span class=nx>key</span> <span class=nx>KeyType</span><span class=p>)</span> <span class=p>(</span><span class=nx>ValueType</span><span class=p>,</span> <span class=kt>error</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=nf>Del</span><span class=p>(</span><span class=nx>key</span> <span class=nx>KeyType</span><span class=p>)</span> <span class=kt>error</span>
+</span></span><span class=line><span class=cl>	<span class=nf>Foreach</span><span class=p>(</span><span class=nx>f</span> <span class=kd>func</span><span class=p>(</span><span class=nx>key</span> <span class=nx>KeyType</span><span class=p>,</span> <span class=nx>value</span> <span class=nx>ValueType</span><span class=p>)</span> <span class=kt>bool</span><span class=p>)</span> <span class=kt>error</span>
+</span></span><span class=line><span class=cl>	<span class=nf>Clear</span><span class=p>()</span> <span class=kt>error</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>目前为存储层也就是 Bitcask 实现了多类型的内存索引，包括：</p><ul><li>BTree: 适合大数据集，需要键排序的场景。</li><li>SkipList: 适合数据量适中，且数据频繁变化的场景。</li><li>SwissTable: 适合高并发场景，以及内存限制严苛且需要高效查找的场景。</li></ul><p>可以通过配置文件自由的配置使用哪种内存索引数据结构，以及相关的对应参数。</p><p>然后我们进一步进行优化，即实现 Shard MemIndex。</p><p>定义如下基本结构：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>type</span> <span class=nx>MemIndexShard</span><span class=p>[</span><span class=nx>K</span> <span class=nx>comparable</span><span class=p>,</span> <span class=nx>V</span> <span class=kt>any</span><span class=p>]</span> <span class=kd>struct</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>shardCount</span> <span class=kt>int</span>
+</span></span><span class=line><span class=cl>	<span class=nx>shards</span>     <span class=p>[]</span><span class=nx>storage2</span><span class=p>.</span><span class=nx>MemIndex</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span> <span class=nx>V</span><span class=p>]</span> 
+</span></span><span class=line><span class=cl>	<span class=nx>sync</span><span class=p>.</span><span class=nx>RWMutex</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>然后是实例化部分：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span> <span class=nx>NewMemIndexShard</span><span class=p>[</span><span class=nx>K</span> <span class=nx>comparable</span><span class=p>,</span> <span class=nx>V</span> <span class=kt>any</span><span class=p>](</span><span class=err>\</span><span class=o>*</span> <span class=o>...</span> <span class=o>*</span><span class=err>\</span><span class=p>)</span> <span class=o>*</span><span class=nx>MemIndexShard</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span> <span class=nx>V</span><span class=p>]</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=nx>index</span> <span class=o>:=</span> <span class=o>&amp;</span><span class=nx>MemIndexShard</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span> <span class=nx>V</span><span class=p>]{</span>
+</span></span><span class=line><span class=cl>        <span class=nx>shardCount</span><span class=p>:</span> <span class=nx>shardCount</span><span class=p>,</span>
+</span></span><span class=line><span class=cl>        <span class=nx>shards</span><span class=p>:</span>     <span class=nb>make</span><span class=p>([]</span><span class=nx>storage2</span><span class=p>.</span><span class=nx>MemIndex</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span> <span class=nx>V</span><span class=p>],</span> <span class=nx>shardCount</span><span class=p>),</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nx>shardCount</span><span class=p>;</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=k>switch</span> <span class=nx>memIndexType</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=k>case</span> <span class=nx>storage2</span><span class=p>.</span><span class=nx>BTree</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=k>if</span> <span class=nx>btreeDegree</span> <span class=o>&lt;=</span> <span class=mi>0</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>            <span class=k>if</span> <span class=nx>btreeLessFunc</span> <span class=o>==</span> <span class=kc>nil</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>            <span class=nx>index</span><span class=p>.</span><span class=nx>shards</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span> <span class=p>=</span> <span class=nx>NewBTreeIndex</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span> <span class=nx>V</span><span class=p>](</span><span class=nx>btreeDegree</span><span class=p>,</span> <span class=nx>btreeLessFunc</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>        <span class=k>case</span> <span class=nx>storage2</span><span class=p>.</span><span class=nx>SkipList</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=k>if</span> <span class=nx>skipListLessFunc</span> <span class=o>==</span> <span class=kc>nil</span> <span class=p>{</span> <span class=o>...</span> <span class=p>}</span>
+</span></span><span class=line><span class=cl>            <span class=k>if</span> <span class=nx>skipListRandSource</span> <span class=o>==</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>                <span class=nx>index</span><span class=p>.</span><span class=nx>shards</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span> <span class=p>=</span> <span class=nx>NewSkipListIndex</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span> <span class=nx>V</span><span class=p>](</span><span class=nx>skipListLessFunc</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>            <span class=p>}</span> <span class=k>else</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>                <span class=nx>index</span><span class=p>.</span><span class=nx>shards</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span> <span class=p>=</span> <span class=nx>NewSkipListIndex</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span> <span class=nx>V</span><span class=p>](</span><span class=nx>skipListLessFunc</span><span class=p>,</span> <span class=nf>WithRandSource</span><span class=p>(</span><span class=nx>skipListRandSource</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>            <span class=p>}</span>
+</span></span><span class=line><span class=cl>        <span class=k>case</span> <span class=nx>storage2</span><span class=p>.</span><span class=nx>SwissTable</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=k>if</span> <span class=nx>swissTableSize</span> <span class=o>&lt;=</span> <span class=mi>0</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>                <span class=nx>swissTableSize</span> <span class=p>=</span> <span class=mi>1</span> <span class=o>&lt;&lt;</span> <span class=mi>10</span>
+</span></span><span class=line><span class=cl>            <span class=p>}</span>
+</span></span><span class=line><span class=cl>            <span class=nx>index</span><span class=p>.</span><span class=nx>shards</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span> <span class=p>=</span> <span class=nx>NewSwissIndex</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span> <span class=nx>V</span><span class=p>](</span><span class=nx>swissTableSize</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>        <span class=k>default</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>            <span class=nx>log</span><span class=p>.</span><span class=nf>Fatal</span><span class=p>(</span><span class=s>&#34;Unsupported memIndex type&#34;</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>        <span class=p>}</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>    <span class=k>return</span> <span class=nx>index</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>然后是分片操作，我们对 key 进行哈希然后对 shardCount 取模，得到对应的分片索引：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>MemIndexShard</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span> <span class=nx>V</span><span class=p>])</span> <span class=nf>getShard</span><span class=p>(</span><span class=nx>key</span> <span class=nx>K</span><span class=p>)</span> <span class=nx>storage2</span><span class=p>.</span><span class=nx>MemIndex</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span> <span class=nx>V</span><span class=p>]</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>h</span> <span class=o>:=</span> <span class=nx>fnv</span><span class=p>.</span><span class=nf>New32a</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=nx>h</span><span class=p>.</span><span class=nf>Write</span><span class=p>([]</span><span class=nb>byte</span><span class=p>(</span><span class=nx>fmt</span><span class=p>.</span><span class=nf>Sprintf</span><span class=p>(</span><span class=s>&#34;%v&#34;</span><span class=p>,</span> <span class=nx>key</span><span class=p>)))</span>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=nx>s</span><span class=p>.</span><span class=nx>shards</span><span class=p>[</span><span class=nx>h</span><span class=p>.</span><span class=nf>Sum32</span><span class=p>()</span><span class=o>%</span><span class=nb>uint32</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>shardCount</span><span class=p>)]</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>然后就是 Put，Get，Del 操作，不难想到这里的流程如下：</p><ol><li>getShard 获取 key 对应的分片。</li><li>shard 执行 Put，Get，Del 操作。</li><li>返回结果。</li></ol><p>这里不多赘述，Foreach 操作也是同理，唯一的区别是需要遍历所有 shard。</p><p>最后我们想想 Clear 操作，它是可以对所有 shard 并发执行的，所以实现上稍微有些不一样：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>s</span> <span class=o>*</span><span class=nx>MemIndexShard</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span> <span class=nx>V</span><span class=p>])</span> <span class=nf>Clear</span><span class=p>()</span> <span class=kt>error</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>s</span><span class=p>.</span><span class=nf>Lock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=k>defer</span> <span class=nx>s</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=kd>var</span> <span class=nx>wg</span> <span class=nx>sync</span><span class=p>.</span><span class=nx>WaitGroup</span>
+</span></span><span class=line><span class=cl>	<span class=nx>errChan</span> <span class=o>:=</span> <span class=nb>make</span><span class=p>(</span><span class=kd>chan</span> <span class=kt>error</span><span class=p>,</span> <span class=nb>len</span><span class=p>(</span><span class=nx>s</span><span class=p>.</span><span class=nx>shards</span><span class=p>))</span>
+</span></span><span class=line><span class=cl>	<span class=k>defer</span> <span class=nb>close</span><span class=p>(</span><span class=nx>errChan</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=nx>_</span><span class=p>,</span> <span class=nx>shard</span> <span class=o>:=</span> <span class=k>range</span> <span class=nx>s</span><span class=p>.</span><span class=nx>shards</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>wg</span><span class=p>.</span><span class=nf>Add</span><span class=p>(</span><span class=mi>1</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=k>go</span> <span class=kd>func</span><span class=p>(</span><span class=nx>s</span> <span class=nx>storage2</span><span class=p>.</span><span class=nx>MemIndex</span><span class=p>[</span><span class=nx>K</span><span class=p>,</span> <span class=nx>V</span><span class=p>])</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>			<span class=k>defer</span> <span class=nx>wg</span><span class=p>.</span><span class=nf>Done</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>			<span class=k>if</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>s</span><span class=p>.</span><span class=nf>Clear</span><span class=p>();</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>				<span class=nx>errChan</span> <span class=o>&lt;-</span> <span class=nx>err</span>
+</span></span><span class=line><span class=cl>			<span class=p>}</span>
+</span></span><span class=line><span class=cl>		<span class=p>}(</span><span class=nx>shard</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>	<span class=nx>wg</span><span class=p>.</span><span class=nf>Wait</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>select</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>case</span> <span class=nx>err</span> <span class=o>:=</span> <span class=o>&lt;-</span><span class=nx>errChan</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;could not clear index: %w&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=k>default</span><span class=p>:</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><h2 id=lrucache--bloomfilter>LRUCache & BloomFilter</h2><p>首先我们想想，目前的实现下，我们读取所有数据都需要进行以下流程：</p><p><img src=/p/fincas-kv-storage-design-and-impl/img1.png width=186 height=395 srcset="/p/fincas-kv-storage-design-and-impl/img1_hu_e8d2f401db557361.png 480w, /p/fincas-kv-storage-design-and-impl/img1_hu_de6e9146bd8f34c5.png 1024w" loading=lazy alt="Image 1" class=gallery-image data-flex-grow=47 data-flex-basis=113px></p><p>每次读取都需要进行磁盘 IO，显然效率非常低下。但是在一个系统中，显然不可能所有数据被使用的概率都是等可能的，必然存在有一些热点数据的情况。</p><p>那么对于这些使用频率较高的热点数据，我们考虑使用缓存来进行加速。</p><p>引入缓存后，我们读取时会先询问缓存中是否存在这个数据，如果存在则直接返回，否则再去磁盘中读取。这样就可以减少一些不必要的磁盘 IO，提高效率。</p><p>现在的流程如下：</p><p><img src=/p/fincas-kv-storage-design-and-impl/img2.png width=310 height=508 srcset="/p/fincas-kv-storage-design-and-impl/img2_hu_7c73b2b3e79a4677.png 480w, /p/fincas-kv-storage-design-and-impl/img2_hu_63c7bf4d585a5e79.png 1024w" loading=lazy alt="Image 2" class=gallery-image data-flex-grow=61 data-flex-basis=146px></p><p>下一步就是怎么确定哪些数据是热点数据。</p><p>我们这里使用 LRU 实现缓存，在 LRU 中，我们认为最近被访问过的数据将有更高的概率被再次访问，所以我们将这些数据作为热点数据放到缓存中。</p><p>这里对于 LRU 的实现不做赘述。</p><p>然后我们继续考虑，是否可以进一步减少不必要的磁盘 IO。</p><p>此前我们引入了内存缓存，但缓存是有容量限制的，现在我们考虑，假设现在有大量恶意的请求，这些请求的 key 都不在内存缓存中或者不在整个存储中，那么这些请求将会全部穿透到磁盘中，导致大量的磁盘 IO。</p><p>为了避免这种情况，我们引入 BloomFilter 来进行过滤，对于确定不存在的 key，我们直接返回，对于可能存在的 key，我们再去缓存或者磁盘中查询。</p><p>这样就避免了我们上面提到的场景可能会出现的问题。</p><p>这里额外提一个自认为比较有意思的实现：</p><p>Bitcask 中的数据量是不确定的，但 BloomFilter 需要一个确定的最大容量。但是我又不想在初始设置一个极大的容量，这样显然会造成浪费。</p><p>然后想到之前学习的 Go Slice 的实现，将它的扩容机制稍微修改应用在了这里：当前 BloomFilter 填充率大于 0.75 时，扩容一倍。</p><p>这部分实现如下：</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=c1>// 检查是否需要扩容</span>
+</span></span><span class=line><span class=cl><span class=k>if</span> <span class=nx>bf</span><span class=p>.</span><span class=nx>autoScale</span> <span class=o>&amp;&amp;</span> <span class=nb>float64</span><span class=p>(</span><span class=nx>atomic</span><span class=p>.</span><span class=nf>LoadUint64</span><span class=p>(</span><span class=o>&amp;</span><span class=nx>bf</span><span class=p>.</span><span class=nx>n</span><span class=p>))</span><span class=o>/</span><span class=nb>float64</span><span class=p>(</span><span class=nx>bf</span><span class=p>.</span><span class=nx>m</span><span class=p>)</span> <span class=p>&gt;</span> <span class=nx>growthThreshold</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=k>if</span> <span class=nx>err</span> <span class=o>:=</span> <span class=nx>bf</span><span class=p>.</span><span class=nf>grow</span><span class=p>();</span> <span class=nx>err</span> <span class=o>!=</span> <span class=kc>nil</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=k>return</span> <span class=nx>fmt</span><span class=p>.</span><span class=nf>Errorf</span><span class=p>(</span><span class=s>&#34;bloom filter grow failed: %v&#34;</span><span class=p>,</span> <span class=nx>err</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre tabindex=0 class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span></code></pre></td><td class=lntd><pre tabindex=0 class=chroma><code class=language-go data-lang=go><span class=line><span class=cl><span class=kd>func</span> <span class=p>(</span><span class=nx>bf</span> <span class=o>*</span><span class=nx>ShardedBloomFilter</span><span class=p>)</span> <span class=nf>grow</span><span class=p>()</span> <span class=kt>error</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>	<span class=nx>newShardCount</span> <span class=o>:=</span> <span class=nb>uint32</span><span class=p>(</span><span class=nb>len</span><span class=p>(</span><span class=nx>bf</span><span class=p>.</span><span class=nx>shards</span><span class=p>)</span> <span class=o>*</span> <span class=nx>growthFactor</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=nx>newShardBits</span> <span class=o>:=</span> <span class=nx>bf</span><span class=p>.</span><span class=nx>shardBits</span> <span class=o>*</span> <span class=nx>growthFactor</span>
+</span></span><span class=line><span class=cl>	<span class=nx>newShards</span> <span class=o>:=</span> <span class=nb>make</span><span class=p>([]</span><span class=nx>shard</span><span class=p>,</span> <span class=nx>newShardCount</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=k>range</span> <span class=nx>newShards</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>newShards</span><span class=p>[</span><span class=nx>i</span><span class=p>].</span><span class=nx>bits</span> <span class=p>=</span> <span class=nb>make</span><span class=p>([]</span><span class=kt>uint64</span><span class=p>,</span> <span class=nx>newShardBits</span><span class=o>/</span><span class=mi>64</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>for</span> <span class=nx>i</span> <span class=o>:=</span> <span class=mi>0</span><span class=p>;</span> <span class=nx>i</span> <span class=p>&lt;</span> <span class=nb>len</span><span class=p>(</span><span class=nx>bf</span><span class=p>.</span><span class=nx>shards</span><span class=p>);</span> <span class=nx>i</span><span class=o>++</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>		<span class=nx>shard</span> <span class=o>:=</span> <span class=o>&amp;</span><span class=nx>bf</span><span class=p>.</span><span class=nx>shards</span><span class=p>[</span><span class=nx>i</span><span class=p>]</span>
+</span></span><span class=line><span class=cl>		<span class=nx>shard</span><span class=p>.</span><span class=nf>Lock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>		<span class=nx>shard</span><span class=p>.</span><span class=nx>bits</span> <span class=p>=</span> <span class=nb>make</span><span class=p>([]</span><span class=kt>uint64</span><span class=p>,</span> <span class=nx>newShardBits</span><span class=o>/</span><span class=mi>64</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>		<span class=nx>shard</span><span class=p>.</span><span class=nf>Unlock</span><span class=p>()</span>
+</span></span><span class=line><span class=cl>	<span class=p>}</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=nx>bf</span><span class=p>.</span><span class=nx>shards</span> <span class=p>=</span> <span class=nx>newShards</span>
+</span></span><span class=line><span class=cl>	<span class=nx>bf</span><span class=p>.</span><span class=nx>m</span> <span class=p>=</span> <span class=nb>uint64</span><span class=p>(</span><span class=nx>newShardCount</span><span class=p>)</span> <span class=o>*</span> <span class=nb>uint64</span><span class=p>(</span><span class=nx>newShardBits</span><span class=p>)</span>
+</span></span><span class=line><span class=cl>	<span class=nx>bf</span><span class=p>.</span><span class=nx>shardMask</span> <span class=p>=</span> <span class=nx>newShardCount</span> <span class=o>-</span> <span class=mi>1</span>
+</span></span><span class=line><span class=cl>	<span class=nx>bf</span><span class=p>.</span><span class=nx>shardBits</span> <span class=p>=</span> <span class=nx>newShardBits</span>
+</span></span><span class=line><span class=cl>
+</span></span><span class=line><span class=cl>	<span class=k>return</span> <span class=kc>nil</span>
+</span></span><span class=line><span class=cl><span class=p>}</span>
+</span></span></code></pre></td></tr></table></div></div><p>至此，存储层的大部分内容就完成了。Bye~</p></section><footer class=article-footer><section class=article-tags><a href=/tags/golang/>Golang</a>
+<a href=/tags/fincaskv/>FincasKV</a>
+<a href=/tags/bitcask/>Bitcask</a>
+<a href=/tags/kv-storage/>KV Storage</a></section><section class=article-copyright><svg class="icon icon-tabler icon-tabler-copyright" width="24" height="24" viewBox="0 0 24 24" stroke-width="2" stroke="currentcolor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z"/><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 4 0 100 6"/></svg>
+<span>Licensed under CC BY-NC-SA 4.0</span></section></footer><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css integrity=sha384-n8MVd4RsNIU0tAv4ct0nTaAbDJwPJzDEaqSD1odI+WdtXRGWt2kTvGFasHpSy3SV crossorigin=anonymous><script src=https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js integrity=sha384-XjKyOOlGwcjNTAIQHIpgOno0Hl1YQqzUOEleOLALmuqehneUG+vnGctmUb0ZY0l8 crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js integrity=sha384-+VBxd3r6XgURycqtZ117nYw44OOcIax56Z4dCRWbxyPt0Koah1uHoK0o4+/RRE05 crossorigin=anonymous defer></script><script>window.addEventListener("DOMContentLoaded",()=>{const e=document.querySelector(".main-article");renderMathInElement(e,{delimiters:[{left:"$$",right:"$$",display:!0},{left:"$",right:"$",display:!1},{left:"\\(",right:"\\)",display:!1},{left:"\\[",right:"\\]",display:!0}],ignoredClasses:["gist"]})})</script></article><aside class=related-content--wrapper><h2 class=section-title>相关文章</h2><div class=related-content><div class="flex article-list--tile"><article><a href=/p/fincas-kv-network-design-and-impl/><div class=article-details><h2 class=article-title>FincasKV - 网络层设计与实现</h2></div></a></article><article><a href=/p/fincas-kv-db-design-and-impl/><div class=article-details><h2 class=article-title>FincasKV - DB层设计与实现</h2></div></a></article></div></div></aside><link rel=stylesheet href=https://unpkg.com/vssue/dist/vssue.min.css><div id=vssue></div><script src=https://unpkg.com/vue@2/dist/vue.runtime.min.js></script><script src=https://unpkg.com/vssue/dist/vssue.github.min.js></script><script>new Vue({el:"#vssue",render:e=>e("Vssue",{props:{title:"FincasKV - 存储层设计与实现",options:{autoCreateIssue:!0,owner:"FinnTew",repo:"blog-comments",clientId:"Ov23liKS3gJoM4gkl7fL",clientSecret:"1f652d3a84fa45475ff7ffe25e89dc72cf9434af"}}})})</script><footer class=site-footer><section class=copyright>&copy;
+2024 -
+2025 FinnTew's Blog</section><section class=powerby>使用 <a href=https://gohugo.io/ target=_blank rel=noopener>Hugo</a> 构建<br>主题 <b><a href=https://github.com/CaiJimmy/hugo-theme-stack target=_blank rel=noopener data-version=3.30.0>Stack</a></b> 由 <a href=https://jimmycai.com target=_blank rel=noopener>Jimmy</a> 设计</section></footer><div class=pswp tabindex=-1 role=dialog aria-hidden=true><div class=pswp__bg></div><div class=pswp__scroll-wrap><div class=pswp__container><div class=pswp__item></div><div class=pswp__item></div><div class=pswp__item></div></div><div class="pswp__ui pswp__ui--hidden"><div class=pswp__top-bar><div class=pswp__counter></div><button class="pswp__button pswp__button--close" title="Close (Esc)"></button>
+<button class="pswp__button pswp__button--share" title=Share></button>
+<button class="pswp__button pswp__button--fs" title="Toggle fullscreen"></button>
+<button class="pswp__button pswp__button--zoom" title="Zoom in/out"></button><div class=pswp__preloader><div class=pswp__preloader__icn><div class=pswp__preloader__cut><div class=pswp__preloader__donut></div></div></div></div></div><div class="pswp__share-modal pswp__share-modal--hidden pswp__single-tap"><div class=pswp__share-tooltip></div></div><button class="pswp__button pswp__button--arrow--left" title="Previous (arrow left)">
+</button>
+<button class="pswp__button pswp__button--arrow--right" title="Next (arrow right)"></button><div class=pswp__caption><div class=pswp__caption__center></div></div></div></div></div><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.js integrity="sha256-ePwmChbbvXbsO02lbM3HoHbSHTHFAeChekF1xKJdleo=" crossorigin=anonymous defer></script><script src=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe-ui-default.min.js integrity="sha256-UKkzOn/w1mBxRmLLGrSeyB4e1xbrp4xylgAWb3M42pU=" crossorigin=anonymous defer></script><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/default-skin/default-skin.min.css crossorigin=anonymous><link rel=stylesheet href=https://cdn.jsdelivr.net/npm/photoswipe@4.1.3/dist/photoswipe.min.css crossorigin=anonymous></main></div><script src=https://cdn.jsdelivr.net/npm/node-vibrant@3.1.6/dist/vibrant.min.js integrity="sha256-awcR2jno4kI5X0zL8ex0vi2z+KMkF24hUW8WePSA9HM=" crossorigin=anonymous></script><script type=text/javascript src=/ts/main.1e9a3bafd846ced4c345d084b355fb8c7bae75701c338f8a1f8a82c780137826.js defer></script><script>(function(){const e=document.createElement("link");e.href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",e.type="text/css",e.rel="stylesheet",document.head.appendChild(e)})()</script></body></html>
